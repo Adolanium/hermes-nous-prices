@@ -67,8 +67,10 @@ const EN = {
   fast: 'Fast',
   allLabs: 'All labs',
   recommended: 'Recommended',
-  priceAsc: 'Price · low to high',
-  priceDesc: 'Price · high to low',
+  priceAsc: 'Input price · low to high',
+  priceDesc: 'Input price · high to low',
+  outputPriceAsc: 'Output price · low to high',
+  outputPriceDesc: 'Output price · high to low',
   byName: 'Name',
   byDiscount: 'Biggest sale',
   refresh: 'Refresh prices',
@@ -135,7 +137,7 @@ const LOCALES = {
     search: 'モデルを検索…', hint1: '「hermes」で検索', hint2: '「deepseek」で検索',
     all: 'すべて', featured: '注目', free: '無料', sale: 'セール中', reasoning: '推論', fast: '高速',
     allLabs: 'すべてのラボ', recommended: 'おすすめ順', priceAsc: '価格・安い順', priceDesc: '価格・高い順',
-    byName: '名前', byDiscount: '割引率順', refresh: '価格を更新', openPortal: 'ポータルを開く',
+    byName: '名前', byDiscount: '割引率順', outputPriceAsc: '出力価格・安い順', outputPriceDesc: '出力価格・高い順', refresh: '価格を更新', openPortal: 'ポータルを開く',
     managePlan: 'プランを管理', models: n => `${n} モデル`, freeCount: n => `${n} 件無料`,
     saleCount: n => `${n} 件セール中`, freeBadge: '無料', proBadge: 'Pro',
     current: '現在', locked: '有料プランが必要', input: '入力', output: '出力',
@@ -163,7 +165,7 @@ const LOCALES = {
     search: '搜索模型…', hint1: '试试 "hermes"', hint2: '试试 "deepseek"',
     all: '全部', featured: '精选', free: '免费', sale: '促销', reasoning: '推理', fast: '快速',
     allLabs: '全部实验室', recommended: '推荐排序', priceAsc: '价格 · 从低到高', priceDesc: '价格 · 从高到低',
-    byName: '名称', byDiscount: '最大折扣', refresh: '刷新价格', openPortal: '打开 Portal',
+    byName: '名称', byDiscount: '最大折扣', outputPriceAsc: '输出价格 · 从低到高', outputPriceDesc: '输出价格 · 从高到低', refresh: '刷新价格', openPortal: '打开 Portal',
     managePlan: '管理订阅', models: n => `${n} 个模型`, freeCount: n => `${n} 个免费`,
     saleCount: n => `${n} 个促销`, freeBadge: '免费', proBadge: 'Pro',
     current: '当前', locked: '需要付费方案', input: '输入', output: '输出',
@@ -190,7 +192,7 @@ const LOCALES = {
     search: '搜尋模型…', hint1: '試試 "hermes"', hint2: '試試 "deepseek"',
     all: '全部', featured: '精選', free: '免費', sale: '特價', reasoning: '推理', fast: '快速',
     allLabs: '所有實驗室', recommended: '推薦排序', priceAsc: '價格 · 低到高', priceDesc: '價格 · 高到低',
-    byName: '名稱', byDiscount: '最大折扣', refresh: '重新整理價格', openPortal: '開啟 Portal',
+    byName: '名稱', byDiscount: '最大折扣', outputPriceAsc: '輸出價格 · 低到高', outputPriceDesc: '輸出價格 · 高到低', refresh: '重新整理價格', openPortal: '開啟 Portal',
     managePlan: '管理方案', models: n => `${n} 個模型`, freeCount: n => `${n} 個免費`,
     saleCount: n => `${n} 個特價`, freeBadge: '免費', proBadge: 'Pro',
     current: '目前', locked: '需要付費方案', input: '輸入', output: '輸出',
@@ -592,7 +594,9 @@ const SORTS = {
   'price-asc': (a, b) => rank(a.inputNum) - rank(b.inputNum) || rank(a.outputNum) - rank(b.outputNum) || a.id.localeCompare(b.id),
   'price-desc': (a, b) => rankDesc(b.inputNum) - rankDesc(a.inputNum) || rankDesc(b.outputNum) - rankDesc(a.outputNum) || a.id.localeCompare(b.id),
   name: (a, b) => a.id.localeCompare(b.id),
-  discount: (a, b) => (b.discount ?? -1) - (a.discount ?? -1) || rank(a.inputNum) - rank(b.inputNum)
+  discount: (a, b) => (b.discount ?? -1) - (a.discount ?? -1) || rank(a.inputNum) - rank(b.inputNum),
+  'output-price-asc': (a, b) => rank(a.outputNum) - rank(b.outputNum) || rank(a.inputNum) - rank(b.inputNum) || a.id.localeCompare(b.id),
+  'output-price-desc': (a, b) => rankDesc(b.outputNum) - rankDesc(a.outputNum) || rankDesc(b.inputNum) - rankDesc(a.inputNum) || a.id.localeCompare(b.id)
 }
 
 const rank = v => (v === null ? Number.POSITIVE_INFINITY : v)
@@ -991,6 +995,8 @@ function PricesPage({ ctx }) {
                     jsx(SelectItem, { value: 'recommended', children: t('recommended') }, 'recommended'),
                     jsx(SelectItem, { value: 'price-asc', children: t('priceAsc') }, 'price-asc'),
                     jsx(SelectItem, { value: 'price-desc', children: t('priceDesc') }, 'price-desc'),
+                    jsx(SelectItem, { value: 'output-price-asc', children: t('outputPriceAsc') }, 'output-price-asc'),
+                    jsx(SelectItem, { value: 'output-price-desc', children: t('outputPriceDesc') }, 'output-price-desc'),
                     jsx(SelectItem, { value: 'name', children: t('byName') }, 'name'),
                     jsx(SelectItem, { value: 'discount', children: t('byDiscount') }, 'discount')
                   ] })
