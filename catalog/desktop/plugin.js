@@ -40,7 +40,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
-const VERSION = '0.0.1'
+const VERSION = '0.1.0'
 const ID = 'nous-prices'
 const PATH = '/nous-prices'
 const NOUS = 'nous'
@@ -307,9 +307,38 @@ const CSS = `
 
 // -- data --------------------------------------------------------------------
 
-function fetchCatalog(refresh, gateway) {
-  if (!gateway) return Promise.reject(new Error('Hermes gateway unavailable'))
-  return gateway.request('model.options', { include_unconfigured: true, ...(refresh ? { refresh: true } : {}) })
+async function companionRequest(ctx, path, gateway, profile, method, params = {}) {
+  const current = () => host.getGateway() === gateway &&
+    (host.state.profile.get() || 'default') === (profile || 'default')
+  if (!current()) throw new Error('Hermes connection changed; retry on the selected profile')
+  if (typeof ctx?.rest === 'function') {
+    try {
+      return await ctx.rest(path, { timeoutMs: 30000 })
+    } catch (error) {
+      // Electron IPC can retain only the message. Match the missing-route
+      // response, not profile-not-found, authentication, or server failures.
+      const missingRoute = /(?:^|\s)404:\s*\{\s*"detail"\s*:\s*"Not Found"\s*\}\s*$/.test(String(error?.message || ''))
+      if (!missingRoute) throw error
+    }
+  }
+  if (!current()) throw new Error('Hermes connection changed; retry on the selected profile')
+  if (!gateway) throw new Error('Hermes gateway unavailable')
+  return gateway.request(method, { ...params, ...(profile ? { profile } : {}) })
+}
+
+function fetchCatalog(refresh, ctx, profile, gateway) {
+  const params = new URLSearchParams({
+    include_unconfigured: 'true',
+    ...(profile ? { profile } : {}),
+    ...(refresh ? { refresh: 'true' } : {})
+  })
+  return companionRequest(ctx, `/catalog?${params.toString()}`, gateway, profile,
+    'model.options', { include_unconfigured: true, ...(refresh ? { refresh: true } : {}) })
+}
+
+function fetchBilling(ctx, profile, gateway) {
+  const params = new URLSearchParams(profile ? { profile } : {})
+  return companionRequest(ctx, `/billing?${params.toString()}`, gateway, profile, 'billing.state')
 }
 
 function nousRow(payload) {
@@ -354,14 +383,14 @@ function useCatalog(profile, ctx) {
   const connection = useValue(host.state.gateway)
   const gateway = host.getGateway()
   const budget = useMemo(() => {
-    const current = catalogBudget(queryClient, gateway, profile)
+    const current = catalogBudget(queryClient, gateway || queryClient, profile)
     current.attempts = 0
     return current
   }, [queryClient, profile, connection, gateway])
   const queryKey = [ID, 'catalog', profile || 'default']
   const read = async refresh => {
     try {
-      let data = await fetchCatalog(refresh, gateway)
+      let data = await fetchCatalog(refresh, ctx, profile, gateway)
       budget.attempts = isCatalogPending(data) ? budget.attempts + 1 : 0
       const row = nousRow(data)
       if (row && !isCatalogPending(data) && Object.keys(row.pricing ?? {}).length) {
@@ -781,10 +810,11 @@ function PricesPage({ ctx }) {
   const profile = useValue(host.state.profile)
   useGatewayWakeup()
   const { catalog, refreshCatalog } = useCatalog(profile, ctx)
+  const gateway = host.getGateway()
 
   const billing = useQuery({
     queryKey: [ID, 'billing', profile || 'default'],
-    queryFn: () => host.request('billing.state'),
+    queryFn: () => fetchBilling(ctx, profile, gateway),
     staleTime: 0,
     refetchInterval: BILLING_REFETCH_MS,
     retry: false
@@ -1199,7 +1229,7 @@ function createDesktopUpdater(config) {
   }
   function cancel() { if (!model.get().busy) patch({ offer: null, error: '', message: '' }); }
   async function run() {
-    patch({ open: true, busy: false, offer: null, error: '', message: "This package uses Hermes updates. Run hermes plugins update hermes-nous-prices, then rescan Desktop plugins." });
+    patch({ open: true, busy: false, offer: null, error: '', message: "This package uses Hermes updates. Run hermes plugins update nous-prices, then rescan Desktop plugins and restart the Gateway." });
   }
   function register(ctx) {
     storage = ctx.storage; alive = true;

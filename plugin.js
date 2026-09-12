@@ -307,14 +307,38 @@ const CSS = `
 
 // -- data --------------------------------------------------------------------
 
-function fetchCatalog(refresh, ctx, profile) {
-  if (!ctx?.rest) return Promise.reject(new Error('Nous Pricing Gateway API unavailable'))
+async function companionRequest(ctx, path, gateway, profile, method, params = {}) {
+  const current = () => host.getGateway() === gateway &&
+    (host.state.profile.get() || 'default') === (profile || 'default')
+  if (!current()) throw new Error('Hermes connection changed; retry on the selected profile')
+  if (typeof ctx?.rest === 'function') {
+    try {
+      return await ctx.rest(path, { timeoutMs: 30000 })
+    } catch (error) {
+      // Electron IPC can retain only the message. Match the missing-route
+      // response, not profile-not-found, authentication, or server failures.
+      const missingRoute = /(?:^|\s)404:\s*\{\s*"detail"\s*:\s*"Not Found"\s*\}\s*$/.test(String(error?.message || ''))
+      if (!missingRoute) throw error
+    }
+  }
+  if (!current()) throw new Error('Hermes connection changed; retry on the selected profile')
+  if (!gateway) throw new Error('Hermes gateway unavailable')
+  return gateway.request(method, { ...params, ...(profile ? { profile } : {}) })
+}
+
+function fetchCatalog(refresh, ctx, profile, gateway) {
   const params = new URLSearchParams({
     include_unconfigured: 'true',
     ...(profile ? { profile } : {}),
     ...(refresh ? { refresh: 'true' } : {})
   })
-  return ctx.rest(`/catalog?${params.toString()}`, { timeoutMs: 30000 })
+  return companionRequest(ctx, `/catalog?${params.toString()}`, gateway, profile,
+    'model.options', { include_unconfigured: true, ...(refresh ? { refresh: true } : {}) })
+}
+
+function fetchBilling(ctx, profile, gateway) {
+  const params = new URLSearchParams(profile ? { profile } : {})
+  return companionRequest(ctx, `/billing?${params.toString()}`, gateway, profile, 'billing.state')
 }
 
 function nousRow(payload) {
@@ -366,7 +390,7 @@ function useCatalog(profile, ctx) {
   const queryKey = [ID, 'catalog', profile || 'default']
   const read = async refresh => {
     try {
-      let data = await fetchCatalog(refresh, ctx, profile)
+      let data = await fetchCatalog(refresh, ctx, profile, gateway)
       budget.attempts = isCatalogPending(data) ? budget.attempts + 1 : 0
       const row = nousRow(data)
       if (row && !isCatalogPending(data) && Object.keys(row.pricing ?? {}).length) {
@@ -786,10 +810,11 @@ function PricesPage({ ctx }) {
   const profile = useValue(host.state.profile)
   useGatewayWakeup()
   const { catalog, refreshCatalog } = useCatalog(profile, ctx)
+  const gateway = host.getGateway()
 
   const billing = useQuery({
     queryKey: [ID, 'billing', profile || 'default'],
-    queryFn: () => ctx.rest('/billing', { timeoutMs: 30000 }),
+    queryFn: () => fetchBilling(ctx, profile, gateway),
     staleTime: 0,
     refetchInterval: BILLING_REFETCH_MS,
     retry: false

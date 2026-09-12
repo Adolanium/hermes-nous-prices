@@ -1,7 +1,7 @@
-"""Build the catalog package from the standalone Desktop files.
+"""Build unified packages from the root Desktop and Gateway sources.
 
-Run with --check in CI to reject stale packaged files. Catalog packages use
-Hermes updates so their Desktop copy cannot bypass a reviewed commit pin.
+Run with --check in CI to reject stale generated files. Unified packages use
+Hermes updates so their UI and Gateway API update together.
 """
 import argparse
 import json
@@ -12,28 +12,19 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def build(check=False):
     config = json.loads((ROOT / "catalog-package.json").read_text())
-    name = config["name"]
-    message = f"This package uses Hermes updates. Run hermes plugins update {name}, then rescan Desktop plugins."
+    dashboard = json.loads((ROOT / "dashboard/manifest.json").read_text())
+    name = dashboard["name"]
+    message = f"This package uses Hermes updates. Run hermes plugins update {name}, then rescan Desktop plugins and restart the Gateway."
     source = (ROOT / "plugin.js").read_text(encoding="utf-8")
-    mode = config["updater"]
-    if mode == "shared":
-        start = "  async function run(action = 'check') {"
-        end = "  function register(ctx) {"
-        replacement = "  async function run() {\n    patch({ open: true, busy: false, offer: null, error: '', message: " + json.dumps(message) + " });\n  }\n"
-    elif mode == "ssh":
-        start = 'async function runUpdate(action = "check") {'
-        end = 'const ROUTE = "/ssh-connections";'
-        replacement = "async function runUpdate() {\n  updatePatch({ busy: false, available: null, restoreAvailable: null, error: '', message: " + json.dumps(message) + " });\n}\n"
-    elif mode != "none":
-        raise ValueError("Unknown updater mode: " + mode)
-    if mode != "none":
-        if source.count(start) != 1 or source.count(end) != 1:
-            raise ValueError("Updater structure changed; review catalog update handling before releasing")
-        first, last = source.index(start), source.index(end)
-        if last <= first:
-            raise ValueError("Unexpected updater function order")
-        source = source[:first] + replacement + source[last:]
-
+    start = "  async function run(action = 'check') {"
+    end = "  function register(ctx) {"
+    if source.count(start) != 1 or source.count(end) != 1:
+        raise ValueError("Updater structure changed; review package update handling before releasing")
+    first, last = source.index(start), source.index(end)
+    if last <= first:
+        raise ValueError("Unexpected updater function order")
+    replacement = "  async function run() {\n    patch({ open: true, busy: false, offer: null, error: '', message: " + json.dumps(message) + " });\n  }\n"
+    managed = source[:first] + replacement + source[last:]
     manifest = {
         "name": name, "version": config["version"],
         "description": config["description"], "author": "Adolanium",
@@ -41,26 +32,28 @@ def build(check=False):
         "provides_tools": [], "provides_hooks": [],
         "provides_middleware": [], "requires_env": [],
     }
-    # JSON is valid YAML and keeps this build dependency-free.
+    # The native manifest, dashboard API namespace and Desktop ID must agree.
+    # The public catalog entry can independently be named hermes-nous-prices.
     outputs = {
         "catalog/plugin.yaml": json.dumps(manifest, indent=2) + "\n",
-        "catalog/__init__.py": '"""Desktop package. Electron loads desktop/plugin.js."""\n\n\ndef register(ctx):\n    """No Agent tools or hooks; enable the Desktop component in Capabilities."""\n',
-        "catalog/desktop/plugin.js": source,
+        "catalog/__init__.py": (ROOT / "__init__.py").read_text(encoding="utf-8"),
+        "desktop/plugin.js": managed,
+        "catalog/desktop/plugin.js": managed,
+        "catalog/dashboard/manifest.json": json.dumps({**dashboard, "version": config["version"]}, indent=2) + "\n",
+        "catalog/dashboard/plugin_api.py": (ROOT / "dashboard/plugin_api.py").read_text(encoding="utf-8"),
     }
-    for companion in config["companions"]:
-        outputs["catalog/desktop/" + companion] = (ROOT / companion).read_text(encoding="utf-8")
     stale = []
-    for name, content in outputs.items():
-        target = ROOT / name
+    for filename, content in outputs.items():
+        target = ROOT / filename
         if check:
             if not target.is_file() or target.read_text(encoding="utf-8") != content:
-                stale.append(name)
+                stale.append(filename)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8", newline="\n")
     if stale:
         raise SystemExit("Run python scripts/build_catalog.py; stale files: " + ", ".join(stale))
-    print("Catalog package verified" if check else "Catalog package built")
+    print("Unified packages verified" if check else "Unified packages built")
 
 
 if __name__ == "__main__":

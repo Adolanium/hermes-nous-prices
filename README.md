@@ -10,7 +10,7 @@
 
 Browse Nous Portal prices inside Hermes Desktop, with sale discounts, free models, and your account balance. Saved prices stay available between visits.
 
-<sub>FOR <a href="https://github.com/NousResearch/hermes-agent">HERMES DESKTOP</a> &nbsp;·&nbsp; COMMUNITY PLUGIN &nbsp;·&nbsp; VERSION 0.0.1</sub>
+<sub>FOR <a href="https://github.com/NousResearch/hermes-agent">HERMES DESKTOP</a> &nbsp;·&nbsp; COMMUNITY PLUGIN &nbsp;·&nbsp; VERSION 0.1.0</sub>
 
 <br /><br />
 
@@ -34,40 +34,35 @@ Labs have collapsible sections. Your category, lab, and sort choices are saved b
 
 ## 📦 Install
 
-The plugin is a unified Hermes package: a Gateway-side Python API plus a local Desktop UI. The Desktop UI talks to the selected Gateway through the plugin-scoped API, so it works when Desktop and Gateway run on different machines. There is no build step or extra server.
+The unified package includes a Gateway API and a Desktop UI. Install it on the machine running the Gateway:
 
-Install the repository as an agent plugin on the Gateway. The package's `desktop/plugin.js` is then installed into the local Desktop plugin directory by Hermes' unified-plugin flow:
-
-```text
-$HERMES_HOME/plugins/nous-prices/
-├── plugin.yaml
-├── dashboard/manifest.json
-├── dashboard/plugin_api.py
-└── desktop/plugin.js
+```sh
+hermes plugins install Adolanium/hermes-nous-prices
+hermes plugins enable nous-prices
 ```
 
-The UI-only fallback location is:
+Restart the Gateway to mount the API. On a machine running both Gateway and Desktop, Hermes' combined-package support discovers `desktop/plugin.js`. Restart Desktop or rescan plugins, then enable **Nous Pricing** in Capabilities > Plugins.
 
-```text
-$HERMES_HOME/desktop-plugins/hermes-nous-prices/plugin.js
-```
+### Desktop with a remote Gateway
 
-With the usual Hermes home location:
+Install and enable the package on the remote Gateway as above. Install the package on the Desktop machine too, or copy the root `plugin.js` into the local Desktop plugin folder shown below. Installing files on the remote machine does not copy the UI to your local computer. Each machine keeps its own installation and updates.
+
+The UI uses the selected Gateway's plugin API when available. If the companion is absent, it falls back to the existing `model.options` and `billing.state` Gateway methods. Older Desktop versions without `ctx.rest` use these methods directly. Authentication failures and server errors remain visible.
+
+### Standalone Desktop installation
+
+Copy the root `plugin.js` into the local folder:
 
 | Platform | Plugin folder |
 | --- | --- |
 | Windows | `%LOCALAPPDATA%\hermes\desktop-plugins\hermes-nous-prices\` |
 | macOS / Linux | `~/.hermes/desktop-plugins/hermes-nous-prices/` |
 
-If you set a custom `HERMES_HOME`, use that folder instead.
+If you set a custom `HERMES_HOME`, use `$HERMES_HOME/desktop-plugins/hermes-nous-prices/` instead. Restart Desktop and enable the plugin. This single-file installation supports signed updates and works without installing the Gateway companion.
 
-Restart Hermes after copying the file, then select **Nous Pricing** in the sidebar. Connect your Nous Portal account in Hermes Settings to load live account information.
+Keep one Desktop installation. Before switching from a manual install to a unified package, back up and move the manual folder outside `desktop-plugins`; Hermes does not overwrite manual installs. Keep the plugin's saved settings. The Desktop plugin ID remains `nous-prices`.
 
-You can also open the page through the command palette with **Nous Portal Pricing: open model pricing**, or press **Ctrl+Alt+P** on Windows/Linux and **Cmd+Alt+P** on macOS.
-
-**Updating an existing installation?** Replace the installed `plugin.js`, then restart Hermes. Editing a separate development checkout does not update the installed copy.
-
-Install this updater-enabled version manually once. Future signed releases can be installed from the page's update button.
+Connect your Nous Portal account in Hermes Settings to load account information. Open **Nous Pricing** from the sidebar, use **Nous Portal Pricing: open model pricing** in the command palette, or press **Ctrl+Alt+P** on Windows/Linux and **Cmd+Alt+P** on macOS.
 
 ## 💾 Prices that stay loaded
 
@@ -96,13 +91,15 @@ Nous Portal Pricing → Hermes gateway → catalog and account data
 | Account plan and balance | `billing.state` |
 | Save a profile's default model | `profiles.configure` |
 
-The plugin uses the same catalog RPC as Hermes' model pickers. It does not scrape the portal or ask for separate credentials.
+The Gateway companion uses Hermes' shared model inventory and billing serializer. Standalone installs use the RPC methods above. It does not scrape the portal or ask for separate credentials.
 
 A default-model change is reported as successful only after the backend confirms it was applied. When Hermes asks for confirmation, the prompt expires if you change profiles or gateways, leave the page, or choose another model.
 
 ## 🔄 Updates and recovery
 
-At the bottom of the page, click **Check for updates**. The plugin checks this repository's [latest release](https://github.com/Adolanium/hermes-nous-prices/releases/latest) and shows **Update now** when a newer signed version is available. **Later** dismisses the offer. It checks only when you ask and never installs without confirmation.
+For unified packages, run `hermes plugins update nous-prices`, restart the Gateway, and rescan Desktop plugins on each machine. Their update button shows these instructions so the UI and API stay together.
+
+For standalone installs, click **Check for updates** at the bottom of the page. The plugin checks this repository's [latest release](https://github.com/Adolanium/hermes-nous-prices/releases/latest) and shows **Update now** when a newer signed version is available. **Later** dismisses the offer. It checks only when you ask and never installs without confirmation.
 
 Public releases need no GitHub login or token. Your Hermes Desktop version must expose local plugin-file APIs. Update checks and downloads use GitHub directly; installation always targets the local Desktop plugin folder, even when the active gateway is remote.
 
@@ -138,8 +135,8 @@ To install the package directly before catalog admission:
 hermes plugins install Adolanium/hermes-nous-prices/catalog
 ```
 
-Restart Hermes Desktop or rescan plugins, then enable the Desktop component in
-Capabilities > Plugins. This package adds no Agent tools, hooks, or middleware.
+Run `hermes plugins enable nous-prices` and restart the Gateway, then rescan Desktop
+plugins and enable the Desktop component in Capabilities > Plugins. This package adds no Agent tools, hooks, or middleware.
 It requires Hermes Desktop with combined-package support. On a remote backend,
 the Desktop component must also be installed on the machine running the app.
 
@@ -148,12 +145,33 @@ installation per Desktop plugin. Before switching from a manual install, back up
 and move its folder out of the Desktop plugin directory; Hermes intentionally
 does not overwrite manual installations. Keep plugin settings when migrating.
 
-After catalog admission, use `hermes plugins update hermes-nous-prices` and rescan
+After catalog admission, use `hermes plugins update nous-prices` and rescan
 Desktop plugins to adopt a reviewed update. The packaged copy's update and restore
 actions cannot replace its files from GitHub releases. Standalone signed updates
 continue to use the existing root files.
 
-For development, edit the root files, then run `python scripts/build_catalog.py`.
-Commit the resulting `catalog/` files. CI runs `python scripts/build_catalog.py --check`
-to keep the package current, including any companion files. Catalog packaging
-releases use `catalog-v0.0.1-1` and are not marked as the latest standalone release.
+The catalog entry is named `hermes-nous-prices`; the installed package and its API namespace are `nous-prices`. If you installed the earlier `0.0.1.post1` preview, back it up and uninstall `hermes-nous-prices` before installing this package so both names are not enabled together.
+
+For development, edit root `plugin.js`, `dashboard/`, and `__init__.py`, then run
+`python scripts/build_catalog.py`. Commit the generated `desktop/` and `catalog/`
+files. CI checks both distributions and runs HTTP and Desktop transport tests.
+Catalog packaging releases use `catalog-v0.1.0-1` and are not marked as the latest
+standalone release.
+
+Run the checks with:
+
+```sh
+python scripts/build_catalog.py --check
+python -m pytest tests/test_api.py -q
+node --test tests/test_transport.mjs
+```
+
+To test discovery, API mounting, billing serialization and legacy model configs
+against a Hermes checkout, set `HERMES_SOURCE` to that checkout and run
+`python -m pytest tests/test_hermes_integration.py -q` with its Python environment.
+These tests use a temporary Hermes home and the offline billing fixture.
+
+## Credits
+
+The Gateway companion was contributed by [@rahlquist](https://github.com/rahlquist) in
+[PR #1](https://github.com/Adolanium/hermes-nous-prices/pull/1). Thank you, @rahlquist.
