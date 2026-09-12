@@ -1,0 +1,10 @@
+{
+  "name": "nous-prices",
+  "label": "Nous Portal Pricing",
+  "description": "Gateway-side Nous Portal model catalog, pricing, billing, and default-model API.",
+  "icon": "CreditCard",
+  "version": "0.1.0",
+  "tab": { "hidden": true },
+  "slots": [],
+  "api": "plugin_api.py"
+}

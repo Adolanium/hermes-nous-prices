@@ -34,9 +34,19 @@ Labs have collapsible sections. Your category, lab, and sort choices are saved b
 
 ## 📦 Install
 
-The plugin uses the [Hermes Desktop plugin SDK](https://github.com/NousResearch/hermes-agent). Installation needs only [`plugin.js`](plugin.js), with no build step or extra server.
+The plugin is a unified Hermes package: a Gateway-side Python API plus a local Desktop UI. The Desktop UI talks to the selected Gateway through the plugin-scoped API, so it works when Desktop and Gateway run on different machines. There is no build step or extra server.
 
-Copy the file into:
+Install the repository as an agent plugin on the Gateway. The package's `desktop/plugin.js` is then installed into the local Desktop plugin directory by Hermes' unified-plugin flow:
+
+```text
+$HERMES_HOME/plugins/nous-prices/
+├── plugin.yaml
+├── dashboard/manifest.json
+├── dashboard/plugin_api.py
+└── desktop/plugin.js
+```
+
+The UI-only fallback location is:
 
 ```text
 $HERMES_HOME/desktop-plugins/hermes-nous-prices/plugin.js
