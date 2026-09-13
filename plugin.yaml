@@ -1,5 +1,5 @@
 name: nous-prices
-version: 0.1.0
+version: 0.1.1
 description: "Nous Portal model pricing with a Gateway-side API and Hermes Desktop UI."
 author: Adolanium
 manifest_version: 1

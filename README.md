@@ -10,7 +10,7 @@
 
 Browse Nous Portal prices inside Hermes Desktop, with sale discounts, free models, and your account balance. Saved prices stay available between visits.
 
-<sub>FOR <a href="https://github.com/NousResearch/hermes-agent">HERMES DESKTOP</a> &nbsp;·&nbsp; COMMUNITY PLUGIN &nbsp;·&nbsp; VERSION 0.1.0</sub>
+<sub>FOR <a href="https://github.com/NousResearch/hermes-agent">HERMES DESKTOP</a> &nbsp;·&nbsp; COMMUNITY PLUGIN &nbsp;·&nbsp; VERSION 0.1.1</sub>
 
 <br /><br />
 
@@ -155,7 +155,7 @@ The catalog entry is named `hermes-nous-prices`; the installed package and its A
 For development, edit root `plugin.js`, `dashboard/`, and `__init__.py`, then run
 `python scripts/build_catalog.py`. Commit the generated `desktop/` and `catalog/`
 files. CI checks both distributions and runs HTTP and Desktop transport tests.
-Catalog packaging releases use `catalog-v0.1.0-1` and are not marked as the latest
+Catalog packaging releases use `catalog-v0.1.1-1` and are not marked as the latest
 standalone release.
 
 Run the checks with:

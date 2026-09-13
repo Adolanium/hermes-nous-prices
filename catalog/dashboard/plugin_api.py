@@ -36,7 +36,7 @@ def _profile_scope(profile: Optional[str]):
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "plugin": "nous-prices", "version": "0.1.0"}
+    return {"ok": True, "plugin": "nous-prices", "version": "0.1.1"}
 
 
 @router.get("/catalog")
