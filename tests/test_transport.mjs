@@ -62,17 +62,9 @@ for (const file of ['plugin.js', 'desktop/plugin.js', 'catalog/desktop/plugin.js
   }
 
   if (file !== 'plugin.js') {
-    test(`${file}: every updater action defers to Hermes without file or network access`, async () => {
-      const start = source.indexOf('  async function run() {')
-      const code = source.slice(start, source.indexOf('  function register(ctx) {', start))
-      assert.ok(start > 0)
-      let shown
-      const context = vm.createContext({ patch: value => { shown = value } })
-      vm.runInContext(code, context)
-      for (const action of ['check', 'install', 'restore', 'restore-confirm']) {
-        await context.run(action)
-        assert.match(shown.message, /hermes plugins update nous-prices/)
-        assert.equal(shown.busy, false)
+    test(`${file}: managed packages have no updater UI or file-replacement helpers`, () => {
+      for (const symbol of ['createDesktopUpdater', 'desktopUpdater', 'UPDATE_KEY', 'Check for updates', 'Restore previous version', 'releases/latest']) {
+        assert.ok(!source.includes(symbol), `unexpected self-update code: ${symbol}`)
       }
     })
   }

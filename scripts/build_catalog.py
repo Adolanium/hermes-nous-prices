@@ -6,6 +6,7 @@ Hermes updates so their UI and Gateway API update together.
 import argparse
 import json
 from pathlib import Path
+from catalog_policy import strip_updater
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -14,17 +15,8 @@ def build(check=False):
     config = json.loads((ROOT / "catalog-package.json").read_text())
     dashboard = json.loads((ROOT / "dashboard/manifest.json").read_text())
     name = dashboard["name"]
-    message = f"This package uses Hermes updates. Run hermes plugins update {name}, then rescan Desktop plugins and restart the Gateway."
     source = (ROOT / "plugin.js").read_text(encoding="utf-8")
-    start = "  async function run(action = 'check') {"
-    end = "  function register(ctx) {"
-    if source.count(start) != 1 or source.count(end) != 1:
-        raise ValueError("Updater structure changed; review package update handling before releasing")
-    first, last = source.index(start), source.index(end)
-    if last <= first:
-        raise ValueError("Unexpected updater function order")
-    replacement = "  async function run() {\n    patch({ open: true, busy: false, offer: null, error: '', message: " + json.dumps(message) + " });\n  }\n"
-    managed = source[:first] + replacement + source[last:]
+    managed = strip_updater(source, "shared")
     manifest = {
         "name": name, "version": config["version"],
         "description": config["description"], "author": "Adolanium",

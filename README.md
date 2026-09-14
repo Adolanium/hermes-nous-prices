@@ -146,8 +146,7 @@ and move its folder out of the Desktop plugin directory; Hermes intentionally
 does not overwrite manual installations. Keep plugin settings when migrating.
 
 After catalog admission, use `hermes plugins update nous-prices` and rescan
-Desktop plugins to adopt a reviewed update. The packaged copy's update and restore
-actions cannot replace its files from GitHub releases. Standalone signed updates
+Desktop plugins to adopt a reviewed update. The packaged copy has no in-app update or restore controls. Its release downloader, signature verifier, backup/restore updater, and code-replacement helpers are removed at build time. Standalone signed updates
 continue to use the existing root files.
 
 The catalog entry is named `hermes-nous-prices`; the installed package and its API namespace are `nous-prices`. If you installed the earlier `0.0.1.post1` preview, back it up and uninstall `hermes-nous-prices` before installing this package so both names are not enabled together.
@@ -155,7 +154,7 @@ The catalog entry is named `hermes-nous-prices`; the installed package and its A
 For development, edit root `plugin.js`, `dashboard/`, and `__init__.py`, then run
 `python scripts/build_catalog.py`. Commit the generated `desktop/` and `catalog/`
 files. CI checks both distributions and runs HTTP and Desktop transport tests.
-Catalog packaging releases use `catalog-v0.1.1-1` and are not marked as the latest
+Catalog packaging releases use `catalog-v0.1.1-2` and are not marked as the latest
 standalone release.
 
 Run the checks with:
