@@ -36,7 +36,7 @@ def api(request, monkeypatch):
 
     def catalog(context, **flags):
         state.calls.append((context.current_model, flags))
-        return {'providers': [{'slug': 'nous', 'pricing': {'input': Decimal('1.25')}}]}
+        return {'providers': [{'slug': 'nous', 'models': ['work'], 'pricing': {'input': Decimal('1.25')}}]}
 
     def billing():
         state.calls.append(('billing', state.profile))
@@ -49,6 +49,7 @@ def api(request, monkeypatch):
                           'plan_bar': {'remaining': Decimal('3.50')}, 'topup_bar': {'remaining': 9}}}
 
     modules = {
+        'agent.models_dev': {'get_model_info': lambda slug, model: SimpleNamespace(context_window=131072)},
         'hermes_cli.inventory': {'load_picker_context': picker, 'build_model_options_payload': catalog},
         'hermes_cli.web_server_profiles': {'_config_profile_scope': scope},
         'hermes_cli.anon_auth': {'guest_carries_inference': lambda: state.guest},
@@ -74,6 +75,7 @@ def test_catalog_profile_flags_and_money(api):
     response = client.get('/api/plugins/nous-prices/catalog?profile=work&refresh=true&include_unconfigured=false')
     assert response.status_code == 200
     assert response.json()['providers'][0]['pricing']['input'] == '1.25'
+    assert response.json()['providers'][0]['context_lengths'] == {'work': 131072}
     assert state.calls == [('work', {'refresh': True, 'include_unconfigured': False})]
     assert state.profile is None
 

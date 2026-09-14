@@ -54,6 +54,22 @@ def catalog(
                 include_unconfigured=bool(include_unconfigured),
                 refresh=bool(refresh),
             )
+        # Reuse Hermes' exact, cached model metadata for context windows. Do not
+        # infer this from model IDs or pricing strings; missing metadata stays 0.
+        try:
+            from agent.models_dev import get_model_info
+            for row in payload.get("providers", []):
+                slug = str(row.get("slug") or "")
+                lengths = {}
+                for model in row.get("models") or []:
+                    info = get_model_info(slug, model)
+                    size = int(getattr(info, "context_window", 0) or 0) if info else 0
+                    if size > 0:
+                        lengths[model] = size
+                row["context_lengths"] = lengths
+        except Exception:
+            for row in payload.get("providers", []):
+                row["context_lengths"] = {}
         return _jsonable(payload)
     except HTTPException:
         raise

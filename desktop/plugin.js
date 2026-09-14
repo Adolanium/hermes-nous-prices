@@ -86,6 +86,8 @@ const EN = {
   input: 'Input',
   output: 'Output',
   cached: 'Cached read',
+  context: 'Context',
+  tokens: 'tokens',
   perMtok: 'per Mtok',
   listPrice: 'List price',
   off: n => `${n}% off`,
@@ -557,7 +559,15 @@ function priceNumber(value) {
   return match ? Number(match[1]) : null
 }
 
-function toEntry(id, pricing, caps, featured, locked, current) {
+function formatContext(value) {
+const n = Number(value)
+if (!Number.isFinite(n) || n <= 0) return null
+if (n >= 1000000) return `${Math.round(n / 100000) / 10}M`
+if (n >= 1000) return `${Math.round(n / 1000)}K`
+return String(n)
+}
+
+function toEntry(id, pricing, caps, contextLength, featured, locked, current) {
   const key = labKey(id)
   return {
     id,
@@ -572,6 +582,8 @@ function toEntry(id, pricing, caps, featured, locked, current) {
     wasOutput: pricing?.was_output ?? null,
     inputNum: priceNumber(pricing?.input),
     outputNum: priceNumber(pricing?.output),
+    contextLength: Number(contextLength) > 0 ? Number(contextLength) : null,
+    contextLabel: formatContext(contextLength),
     reasoning: caps?.reasoning === true,
     fast: caps?.fast === true,
     featured,
@@ -661,6 +673,7 @@ function ModelDetail({ m, pendingDefault, defaultBusy, onSetDefault }) {
   const cells = []
   cells.push(jsx(Cell, { label: t('input'), value: m.free ? t('freeBadge') : m.input || em, sub: m.wasInput ? `${t('listPrice')} ${m.wasInput}` : t('perMtok') }, 'in'))
   cells.push(jsx(Cell, { label: t('output'), value: m.free ? t('freeBadge') : m.output || em, sub: m.wasOutput ? `${t('listPrice')} ${m.wasOutput}` : t('perMtok') }, 'out'))
+  cells.push(jsx(Cell, { label: t('context'), value: m.contextLabel || em, sub: t('tokens') }, 'context'))
   if (m.cache) cells.push(jsx(Cell, { label: t('cached'), value: m.cache, sub: t('perMtok') }, 'cache'))
   if (m.discount !== null) cells.push(jsx(Cell, { label: t('sale'), value: t('off', m.discount) }, 'sale'))
   const capNames = [m.reasoning ? t('chipReasoning') : null, m.fast ? t('chipFast') : null, m.featured ? t('chipNew') : null].filter(Boolean)
@@ -838,12 +851,13 @@ function PricesPage({ ctx }) {
     if (!row) return []
     const pricing = row.pricing ?? {}
     const caps = row.capabilities ?? {}
+    const contextLengths = row.context_lengths ?? {}
     const featuredSet = new Set(row.featured_models ?? [])
     const lockedSet = new Set(row.unavailable_models ?? [])
     const current = currentModelId(catalog.data, row)
     return (row.models ?? [])
       .filter(id => typeof id === 'string' && id)
-      .map(id => ({ ...toEntry(id, pricing[id], caps[id], featuredSet.has(id), lockedSet.has(id), id === current),
+      .map(id => ({ ...toEntry(id, pricing[id], caps[id], contextLengths[id], featuredSet.has(id), lockedSet.has(id), id === current),
         availabilityPending: row.free_tier_pending === true }))
   }, [catalog.data])
 
