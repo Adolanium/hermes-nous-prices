@@ -49,7 +49,7 @@ def api(request, monkeypatch):
                           'plan_bar': {'remaining': Decimal('3.50')}, 'topup_bar': {'remaining': 9}}}
 
     modules = {
-        'agent.models_dev': {'get_model_info': lambda slug, model: SimpleNamespace(context_window=131072)},
+        'agent.model_metadata': {'_resolve_nous_context_length': lambda model, base_url='': (131072, 'portal')},
         'hermes_cli.inventory': {'load_picker_context': picker, 'build_model_options_payload': catalog},
         'hermes_cli.web_server_profiles': {'_config_profile_scope': scope},
         'hermes_cli.anon_auth': {'guest_carries_inference': lambda: state.guest},

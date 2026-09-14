@@ -54,18 +54,19 @@ def catalog(
                 include_unconfigured=bool(include_unconfigured),
                 refresh=bool(refresh),
             )
-        # Reuse Hermes' exact, cached model metadata for context windows. Do not
-        # infer this from model IDs or pricing strings; missing metadata stays 0.
+        # Nous's authoritative context sizes come from its /v1/models metadata,
+        # not models.dev. Only publish portal-sourced values; never expose a
+        # generic fallback as if it were an exact model limit.
         try:
-            from agent.models_dev import get_model_info
+            from agent.model_metadata import _resolve_nous_context_length
+            base_url = str(getattr(load_picker_context(), "current_base_url", "") or "")
             for row in payload.get("providers", []):
-                slug = str(row.get("slug") or "")
                 lengths = {}
-                for model in row.get("models") or []:
-                    info = get_model_info(slug, model)
-                    size = int(getattr(info, "context_window", 0) or 0) if info else 0
-                    if size > 0:
-                        lengths[model] = size
+                if str(row.get("slug") or "").lower() == "nous":
+                    for model in row.get("models") or []:
+                        size, source = _resolve_nous_context_length(model, base_url=base_url)
+                        if source == "portal" and isinstance(size, int) and size > 0:
+                            lengths[model] = size
                 row["context_lengths"] = lengths
         except Exception:
             for row in payload.get("providers", []):
