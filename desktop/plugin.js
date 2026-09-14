@@ -715,6 +715,7 @@ function ModelRow({ m, open, onToggle, pendingDefault, defaultBusy, onSetDefault
           jsx('span', { style: { flex: 1, minWidth: 0 } }),
           jsx(CapChips, { m, t }),
           m.current ? jsx('span', { className: 'np-badge', 'data-kind': 'current', children: t('current') }) : null,
+          jsx('span', { className: 'np-context', title: m.contextLength ? `${m.contextLength} tokens` : undefined, children: m.contextLabel || '—' }),
           jsx(PriceTag, { m, t })
         ]
       }),
