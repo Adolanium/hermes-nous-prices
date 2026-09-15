@@ -86,6 +86,8 @@ const EN = {
   input: 'Input',
   output: 'Output',
   cached: 'Cached read',
+  context: 'Context',
+  tokens: 'tokens',
   perMtok: 'per Mtok',
   listPrice: 'List price',
   off: n => `${n}% off`,
@@ -285,6 +287,7 @@ const CSS = `
 .np-cap[data-kind=featured]{color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 11%,transparent)}
 .np-cap[data-kind=lock]{color:var(--ui-text-tertiary)}
 .np-price{display:inline-flex;align-items:baseline;gap:7px;flex-shrink:0;font-variant-numeric:tabular-nums;font-size:11.5px;line-height:18px;color:var(--ui-text-secondary);font-family:var(--font-mono,monospace)}
+.np-context{flex-shrink:0;color:var(--ui-text-secondary);font-variant-numeric:tabular-nums;font-size:11.5px;white-space:nowrap}
 .np-price .np-was{color:var(--ui-text-quaternary);font-size:10px;text-decoration:line-through}
 .np-badge{display:inline-flex;align-items:center;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;flex-shrink:0}
 .np-badge[data-kind=free]{color:var(--ui-green);background:color-mix(in srgb,var(--ui-green) 14%,transparent)}
@@ -557,7 +560,14 @@ function priceNumber(value) {
   return match ? Number(match[1]) : null
 }
 
-function toEntry(id, pricing, caps, featured, locked, current) {
+function formatContext(value) {
+  if (!Number.isSafeInteger(value) || value <= 0) return null
+  if (value >= 1048576) return `${Math.round(value / 1048576 * 10) / 10}M`
+  if (value >= 1024) return `${Math.round(value / 1024 * 10) / 10}K`
+  return String(value)
+}
+
+function toEntry(id, pricing, caps, featured, locked, current, contextLength) {
   const key = labKey(id)
   return {
     id,
@@ -572,6 +582,8 @@ function toEntry(id, pricing, caps, featured, locked, current) {
     wasOutput: pricing?.was_output ?? null,
     inputNum: priceNumber(pricing?.input),
     outputNum: priceNumber(pricing?.output),
+    contextLength: Number.isSafeInteger(contextLength) && contextLength > 0 ? contextLength : null,
+    contextLabel: formatContext(contextLength),
     reasoning: caps?.reasoning === true,
     fast: caps?.fast === true,
     featured,
@@ -661,6 +673,7 @@ function ModelDetail({ m, pendingDefault, defaultBusy, onSetDefault }) {
   const cells = []
   cells.push(jsx(Cell, { label: t('input'), value: m.free ? t('freeBadge') : m.input || em, sub: m.wasInput ? `${t('listPrice')} ${m.wasInput}` : t('perMtok') }, 'in'))
   cells.push(jsx(Cell, { label: t('output'), value: m.free ? t('freeBadge') : m.output || em, sub: m.wasOutput ? `${t('listPrice')} ${m.wasOutput}` : t('perMtok') }, 'out'))
+  cells.push(jsx(Cell, { label: t('context'), value: m.contextLabel || em, sub: m.contextLength ? `${m.contextLength} ${t('tokens')}` : t('tokens') }, 'context'))
   if (m.cache) cells.push(jsx(Cell, { label: t('cached'), value: m.cache, sub: t('perMtok') }, 'cache'))
   if (m.discount !== null) cells.push(jsx(Cell, { label: t('sale'), value: t('off', m.discount) }, 'sale'))
   const capNames = [m.reasoning ? t('chipReasoning') : null, m.fast ? t('chipFast') : null, m.featured ? t('chipNew') : null].filter(Boolean)
@@ -702,6 +715,7 @@ function ModelRow({ m, open, onToggle, pendingDefault, defaultBusy, onSetDefault
           jsx('span', { style: { flex: 1, minWidth: 0 } }),
           jsx(CapChips, { m, t }),
           m.current ? jsx('span', { className: 'np-badge', 'data-kind': 'current', children: t('current') }) : null,
+          jsx('span', { className: 'np-context', title: m.contextLength ? `${t('context')}: ${m.contextLength} ${t('tokens')}` : t('context'), children: m.contextLabel || '—' }),
           jsx(PriceTag, { m, t })
         ]
       }),
@@ -838,12 +852,13 @@ function PricesPage({ ctx }) {
     if (!row) return []
     const pricing = row.pricing ?? {}
     const caps = row.capabilities ?? {}
+    const contextLengths = row.context_lengths ?? {}
     const featuredSet = new Set(row.featured_models ?? [])
     const lockedSet = new Set(row.unavailable_models ?? [])
     const current = currentModelId(catalog.data, row)
     return (row.models ?? [])
       .filter(id => typeof id === 'string' && id)
-      .map(id => ({ ...toEntry(id, pricing[id], caps[id], featuredSet.has(id), lockedSet.has(id), id === current),
+      .map(id => ({ ...toEntry(id, pricing[id], caps[id], featuredSet.has(id), lockedSet.has(id), id === current, contextLengths[id]),
         availabilityPending: row.free_tier_pending === true }))
   }, [catalog.data])
 

@@ -25,6 +25,10 @@ Browse Nous Portal prices inside Hermes Desktop, with sale discounts, free model
 
 Compare input and output costs in **USD per million tokens**, with cached-read pricing in the expanded model details when available.
 
+With the Gateway companion installed, model rows and details also show context sizes
+from exact model IDs in the Nous Portal response. Hover over a row's context size or
+expand its details to see the full token count. Missing metadata shows a dash.
+
 | | |
 | --- | --- |
 | **Model pricing**<br />See free models, current prices, sale percentages, and original prices when the catalog supplies them. | **Search and filters**<br />Search by model ID or lab. Filter by Featured, Free, On sale, Reasoning, or Fast, then sort by price, name, or discount. |
@@ -173,4 +177,7 @@ These tests use a temporary Hermes home and the offline billing fixture.
 ## Credits
 
 The Gateway companion was contributed by [@rahlquist](https://github.com/rahlquist) in
-[PR #1](https://github.com/Adolanium/hermes-nous-prices/pull/1). Thank you, @rahlquist.
+[PR #1](https://github.com/Adolanium/hermes-nous-prices/pull/1).
+The context-window display was contributed by [@rahlquist](https://github.com/rahlquist)
+in [PR #3](https://github.com/Adolanium/hermes-nous-prices/pull/3). Thank you, @rahlquist,
+for adding model context sizes alongside pricing.

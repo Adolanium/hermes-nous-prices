@@ -54,11 +54,50 @@ def catalog(
                 include_unconfigured=bool(include_unconfigured),
                 refresh=bool(refresh),
             )
+            for row in payload.get("providers", []):
+                row["context_lengths"] = {}
+                if str(row.get("slug") or "").lower() == "nous":
+                    row["context_lengths"] = _nous_context_lengths(row.get("models") or [])
         return _jsonable(payload)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"model catalog unavailable: {exc}") from exc
+
+
+def _nous_context_lengths(models: list[str]) -> dict[str, int]:
+    """Read exact Portal IDs while the caller's profile scope is active."""
+    if not models:
+        return {}
+    try:
+        from hermes_cli.auth import (
+            _resolve_verify, get_provider_auth_state, resolve_nous_runtime_credentials,
+        )
+        from hermes_cli.auth_nous import _nous_http_client
+
+        credentials = resolve_nous_runtime_credentials(timeout_seconds=10)
+        base_url = credentials["base_url"].rstrip("/")
+        api_key = credentials["api_key"]
+        if not base_url or not api_key:
+            return {}
+        verify = _resolve_verify(auth_state=get_provider_auth_state("nous"))
+        with _nous_http_client(10, verify) as client:
+            response = client.get(f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"})
+            response.raise_for_status()
+            rows = response.json().get("data", [])
+        wanted = {model for model in models if isinstance(model, str)}
+        lengths = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            model, size = row.get("id"), row.get("context_length")
+            # Do not use the generic resolver: it also matches aliases and substrings.
+            if isinstance(model, str) and model in wanted and type(size) is int and size > 0:
+                lengths[model] = size
+        return lengths
+    except Exception:
+        # Context metadata is optional; prices must remain available when it fails.
+        return {}
 
 
 @router.get("/billing")

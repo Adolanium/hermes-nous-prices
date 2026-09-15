@@ -5,6 +5,32 @@ import test from 'node:test'
 
 for (const file of ['plugin.js', 'desktop/plugin.js', 'catalog/desktop/plugin.js']) {
   const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+  test(`${file}: catalog context reaches model rows and details`, () => {
+    const element = (type, props) => ({ type: typeof type === 'function' ? type.name : type, ...props })
+    const context = vm.createContext({
+      ID: 'nous-prices', labKey: () => 'nous', labLabel: () => 'Nous',
+      jsx: element, jsxs: element, usePluginI18n: () => key => key,
+      Button() {}, GlyphSpinner() {}, CopyButton() {}, CapChips() {}, PriceTag() {},
+      icons: { ChevronRight() {} }, useMemo: fn => fn(),
+      currentModelId: () => '', catalog: { data: {} },
+      row: { models: ['work', 'large', 'missing'], pricing: {},
+        context_lengths: { work: 131072, large: 1048576 } },
+    })
+    vm.runInContext(source.slice(source.indexOf('function priceNumber('), source.indexOf('const CATEGORIES')), context)
+    vm.runInContext(source.slice(source.indexOf('function Cell('), source.indexOf('function LabGroup(')), context)
+    vm.runInContext(source.slice(source.indexOf('  const entries = useMemo('), source.indexOf('  const pricingPending =')), context)
+    for (const [index, label, exact] of [[0, '128K', 131072], [1, '1M', 1048576], [2, '—', null]]) {
+      const model = vm.runInContext(`entries[${index}]`, context)
+      const detail = context.ModelDetail({ m: model })
+      const cell = detail.children[0].children.find(child => child.label === 'context')
+      assert.equal(cell?.value, label)
+      assert.equal(model.contextLength, exact)
+      const row = context.ModelRow({ m: model })
+      const contextLabel = row.children[0].children[0].children.find(child => child?.className === 'np-context')
+      assert.equal(contextLabel?.children, label)
+      if (exact) assert.match(contextLabel.title, new RegExp(String(exact)))
+    }
+  })
   function harness() {
     const calls = []
     const gateway = { request: async (...args) => { calls.push(args); return { rpc: true } } }

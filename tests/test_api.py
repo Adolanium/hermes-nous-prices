@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(params=['dashboard/plugin_api.py', 'catalog/dashboard/plugin_api.py'])
 def api(request, monkeypatch):
-    state = SimpleNamespace(profile=None, guest=False, failure=None, calls=[])
+    state = SimpleNamespace(profile=None, guest=False, failure=None, calls=[],
+                            metadata_calls=[], metadata_failure=None,
+                            models=[{'id': 'work', 'context_length': 131072}])
 
     @contextmanager
     def scope(profile):
@@ -36,7 +38,7 @@ def api(request, monkeypatch):
 
     def catalog(context, **flags):
         state.calls.append((context.current_model, flags))
-        return {'providers': [{'slug': 'nous', 'pricing': {'input': Decimal('1.25')}}]}
+        return {'providers': [{'slug': 'nous', 'models': ['work'], 'pricing': {'input': Decimal('1.25')}}]}
 
     def billing():
         state.calls.append(('billing', state.profile))
@@ -48,7 +50,29 @@ def api(request, monkeypatch):
                           'total_spendable_display': '$12.50', 'renews_display': 'Tomorrow',
                           'plan_bar': {'remaining': Decimal('3.50')}, 'topup_bar': {'remaining': 9}}}
 
+    def credentials(**kwargs):
+        state.metadata_calls.append(('credentials', state.profile))
+        return {'base_url': 'https://nous.example/v1', 'api_key': 'test-only-key'}
+
+    class PortalClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, url, headers):
+            state.metadata_calls.append((state.profile, url, headers))
+            if state.metadata_failure:
+                raise state.metadata_failure
+            return SimpleNamespace(raise_for_status=lambda: None,
+                                   json=lambda: {'data': state.models})
+
     modules = {
+        'hermes_cli.auth': {'resolve_nous_runtime_credentials': credentials,
+                            'get_provider_auth_state': lambda provider: {},
+                            '_resolve_verify': lambda **kwargs: True},
+        'hermes_cli.auth_nous': {'_nous_http_client': lambda *args: PortalClient()},
         'hermes_cli.inventory': {'load_picker_context': picker, 'build_model_options_payload': catalog},
         'hermes_cli.web_server_profiles': {'_config_profile_scope': scope},
         'hermes_cli.anon_auth': {'guest_carries_inference': lambda: state.guest},
@@ -74,7 +98,45 @@ def test_catalog_profile_flags_and_money(api):
     response = client.get('/api/plugins/nous-prices/catalog?profile=work&refresh=true&include_unconfigured=false')
     assert response.status_code == 200
     assert response.json()['providers'][0]['pricing']['input'] == '1.25'
+    assert response.json()['providers'][0]['context_lengths'] == {'work': 131072}
     assert state.calls == [('work', {'refresh': True, 'include_unconfigured': False})]
+    assert state.profile is None
+
+
+def test_context_metadata_uses_scoped_nous_credentials(api):
+    client, state = api
+    client.get('/api/plugins/nous-prices/catalog?profile=work')
+    assert state.metadata_calls == [
+        ('credentials', 'work'),
+        ('work', 'https://nous.example/v1/models', {'Authorization': 'Bearer test-only-key'}),
+    ]
+
+
+@pytest.mark.parametrize('models', [
+    [{'id': 'unrelated', 'context_length': 8192}],
+    [{'id': 'work-extended', 'context_length': 8192}, {'id': 'other', 'context_length': 4096}],
+    [{'id': 'vendor/work', 'context_length': 8192}],
+    [{'id': 'work'}],
+    [{'id': 'work', 'context_length': True}],
+    [{'id': 'work', 'context_length': -1}],
+    [{'id': 'work', 'context_length': '131072'}],
+    [],
+])
+def test_missing_or_invalid_exact_context_stays_unknown(api, models):
+    client, state = api
+    state.models = models
+    payload = client.get('/api/plugins/nous-prices/catalog').json()
+    assert payload['providers'][0]['context_lengths'] == {}
+
+
+def test_metadata_failure_preserves_prices(api):
+    client, state = api
+    state.metadata_failure = RuntimeError('offline')
+    response = client.get('/api/plugins/nous-prices/catalog?profile=work')
+    assert response.status_code == 200
+    row = response.json()['providers'][0]
+    assert row['pricing']['input'] == '1.25'
+    assert row['context_lengths'] == {}
     assert state.profile is None
 
 
