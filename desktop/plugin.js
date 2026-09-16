@@ -71,6 +71,7 @@ const EN = {
   priceDesc: 'Input price · high to low',
   outputPriceAsc: 'Output price · low to high',
   outputPriceDesc: 'Output price · high to low',
+  contextDesc: 'Context size · largest first',
   byName: 'Name',
   byDiscount: 'Biggest sale',
   refresh: 'Refresh prices',
@@ -608,7 +609,8 @@ const SORTS = {
   name: (a, b) => a.id.localeCompare(b.id),
   discount: (a, b) => (b.discount ?? -1) - (a.discount ?? -1) || rank(a.inputNum) - rank(b.inputNum),
   'output-price-asc': (a, b) => rank(a.outputNum) - rank(b.outputNum) || rank(a.inputNum) - rank(b.inputNum) || a.id.localeCompare(b.id),
-  'output-price-desc': (a, b) => rankDesc(b.outputNum) - rankDesc(a.outputNum) || rankDesc(b.inputNum) - rankDesc(a.inputNum) || a.id.localeCompare(b.id)
+  'output-price-desc': (a, b) => rankDesc(b.outputNum) - rankDesc(a.outputNum) || rankDesc(b.inputNum) - rankDesc(a.inputNum) || a.id.localeCompare(b.id),
+  'context-desc': (a, b) => rankDesc(b.contextLength) - rankDesc(a.contextLength) || a.id.localeCompare(b.id)
 }
 
 const rank = v => (v === null ? Number.POSITIVE_INFINITY : v)
@@ -1012,6 +1014,7 @@ function PricesPage({ ctx }) {
                     jsx(SelectItem, { value: 'price-desc', children: t('priceDesc') }, 'price-desc'),
                     jsx(SelectItem, { value: 'output-price-asc', children: t('outputPriceAsc') }, 'output-price-asc'),
                     jsx(SelectItem, { value: 'output-price-desc', children: t('outputPriceDesc') }, 'output-price-desc'),
+                    jsx(SelectItem, { value: 'context-desc', children: t('contextDesc') }, 'context-desc'),
                     jsx(SelectItem, { value: 'name', children: t('byName') }, 'name'),
                     jsx(SelectItem, { value: 'discount', children: t('byDiscount') }, 'discount')
                   ] })
