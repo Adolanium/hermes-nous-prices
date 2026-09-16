@@ -72,6 +72,12 @@ const EN = {
   outputPriceAsc: 'Output price · low to high',
   outputPriceDesc: 'Output price · high to low',
   contextDesc: 'Context size · largest first',
+  priceChangesTitle: 'Pricing updated',
+  priceChangesMessage: n => `${n} model${n === 1 ? '' : 's'} changed`,
+  dismiss: 'Dismiss',
+  priceNotifications: 'Price change notices',
+  priceNotificationsOn: 'On',
+  priceNotificationsOff: 'Off',
   byName: 'Name',
   byDiscount: 'Biggest sale',
   refresh: 'Refresh prices',
@@ -356,9 +362,31 @@ function isCatalogPending(payload) {
   return row?.pricing_pending === true || row?.free_tier_pending === true
 }
 
+function pricingFingerprint(row) {
+  return JSON.stringify((row?.models ?? []).filter(Boolean).sort().map(id => [
+    id,
+    row?.pricing?.[id]?.input ?? null,
+    row?.pricing?.[id]?.output ?? null,
+    row?.pricing?.[id]?.cache ?? null,
+    row?.pricing?.[id]?.discount_percent ?? null,
+    row?.context_lengths?.[id] ?? null
+  ]))
+}
+
+function pricingChangeCount(before, after) {
+  if (!before || !after) return 0
+  const a = new Map(JSON.parse(before).map(row => [row[0], JSON.stringify(row.slice(1))]))
+  const b = new Map(JSON.parse(after).map(row => [row[0], JSON.stringify(row.slice(1))]))
+  const ids = new Set([...a.keys(), ...b.keys()])
+  return [...ids].filter(id => a.get(id) !== b.get(id)).length
+}
+
 // Query observers share requests, so they must also share the retry counter.
 // Weak keys release budgets when a query client or gateway is discarded.
 const catalogBudgets = new WeakMap()
+const pricingChange = atom(null)
+const PRICING_NOTIFY_KEY = 'local.notifyPriceChanges'
+const pricingFingerprints = new Map()
 function catalogBudget(queryClient, gateway, profile) {
   if (!catalogBudgets.has(queryClient)) catalogBudgets.set(queryClient, new WeakMap())
   const gateways = catalogBudgets.get(queryClient)
@@ -400,6 +428,14 @@ function useCatalog(profile, ctx) {
       budget.attempts = isCatalogPending(data) ? budget.attempts + 1 : 0
       const row = nousRow(data)
       if (row && !isCatalogPending(data) && Object.keys(row.pricing ?? {}).length) {
+        const fingerprint = pricingFingerprint(row)
+        const fingerprintKey = `${profile || 'default'}:${connection?.connectionId || 'local'}`
+        const previousFingerprint = pricingFingerprints.get(fingerprintKey)
+        pricingFingerprints.set(fingerprintKey, fingerprint)
+        let notifyChanges = true
+        try { notifyChanges = ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false } catch { /* use default */ }
+        const changed = pricingChangeCount(previousFingerprint, fingerprint)
+        if (previousFingerprint && changed > 0 && notifyChanges) pricingChange.set({ count: changed, key: fingerprintKey })
         const saved = { version: 1, savedAt: Date.now(), models: row.models ?? [],
           pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [] }
         snapshot.value = saved
@@ -1353,9 +1389,30 @@ const desktopUpdater = createDesktopUpdater({
   repo: 'Adolanium/hermes-nous-prices', folders: ['hermes-nous-prices', 'nous-prices'], files: ['plugin.js']
 });
 
+function PricingNotice({ ctx }) {
+  const t = usePluginI18n(ID)
+  const notice = useValue(pricingChange)
+  const [enabled, setEnabled] = useState(() => ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false)
+  if (!notice && enabled) return null
+  const toggle = () => {
+    const next = !enabled
+    setEnabled(next)
+    ctx.storage.set(PRICING_NOTIFY_KEY, next)
+    if (!next) pricingChange.set(null)
+  }
+  return jsxs('section', { style: { flexShrink: 0, padding: '8px 16px', borderTop: '1px solid var(--ui-stroke-secondary)', color: 'var(--ui-text-secondary)', fontSize: 12 }, children: [
+    jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }, children: [
+      jsx('span', { style: { marginRight: 'auto' }, children: notice ? `${t('priceChangesTitle')} — ${t('priceChangesMessage', notice.count)}` : t('priceNotifications') }),
+      jsx('button', { type: 'button', onClick: toggle, style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: `${t('priceNotifications')}: ${enabled ? t('priceNotificationsOn') : t('priceNotificationsOff')}` }),
+      notice ? jsx('button', { type: 'button', onClick: () => pricingChange.set(null), style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: t('dismiss') }) : null
+    ] })
+  ] })
+}
+
 function Page({ ctx }) {
   return jsxs('div', { className: 'np-page', children: [
     jsx('div', { style: { flex: 1, minHeight: 0, overflow: 'hidden' }, children: jsx(PricesPage, { ctx }) }),
+    jsx(PricingNotice, { ctx }),
     jsx(desktopUpdater.Panel, {})
   ] });
 }
