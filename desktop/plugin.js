@@ -1141,6 +1141,26 @@ function PriceChip({ ctx }) {
 
 
 
+function PricingNotice({ ctx }) {
+  const t = usePluginI18n(ID)
+  const notice = useValue(pricingChange)
+  const [enabled, setEnabled] = useState(() => ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false)
+  if (!notice && enabled) return null
+  const toggle = () => {
+    const next = !enabled
+    setEnabled(next)
+    ctx.storage.set(PRICING_NOTIFY_KEY, next)
+    if (!next) pricingChange.set(null)
+  }
+  return jsxs('section', { style: { flexShrink: 0, padding: '8px 16px', borderTop: '1px solid var(--ui-stroke-secondary)', color: 'var(--ui-text-secondary)', fontSize: 12 }, children: [
+    jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }, children: [
+      jsx('span', { style: { marginRight: 'auto' }, children: notice ? `${t('priceChangesTitle')} — ${t('priceChangesMessage', notice.count)}` : t('priceNotifications') }),
+      jsx('button', { type: 'button', onClick: toggle, style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: `${t('priceNotifications')}: ${enabled ? t('priceNotificationsOn') : t('priceNotificationsOff')}` }),
+      notice ? jsx('button', { type: 'button', onClick: () => pricingChange.set(null), style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: t('dismiss') }) : null
+    ] })
+  ] })
+}
+
 function Page({ ctx }) {
   return jsxs('div', { className: 'np-page', children: [
     jsx('div', { style: { flex: 1, minHeight: 0, overflow: 'hidden' }, children: jsx(PricesPage, { ctx }) }),

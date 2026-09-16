@@ -14,7 +14,12 @@ def cut(source, start, end, keep_end=True):
 def strip_updater(source, mode):
     if mode == "shared":
         source = cut(source, "// BEGIN SIGNED DESKTOP UPDATER", "// END SIGNED DESKTOP UPDATER", False)
+        notice_start = source.find("function PricingNotice({ ctx })")
+        notice_end = source.find("\nfunction Page({ ctx })", notice_start)
+        notice = source[notice_start:notice_end] + "\n" if notice_start >= 0 and notice_end > notice_start else ""
         source = cut(source, "const UPDATE_KEY =", "function Page(")
+        if notice and "function PricingNotice({ ctx })" not in source:
+            source = source.replace("function Page({ ctx })", notice + "function Page({ ctx })", 1)
         source, panels = re.subn(r"jsx\(desktopUpdater\.Panel, \{\}\)", "null", source)
         source, registrations = re.subn(r"(?m)^ *desktopUpdater\.register\(ctx\);?\n", "", source)
         if (panels, registrations) != (1, 1):
