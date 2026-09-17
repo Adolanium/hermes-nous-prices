@@ -313,9 +313,6 @@ const CSS = `
 .np-cell-sub{display:block;font-size:10px;color:var(--ui-text-tertiary);margin-top:1px}
 .np-detail-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .np-detail-note{font-size:10.5px;color:var(--ui-text-tertiary);margin-left:auto}
-.np-toggle{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 10px;min-height:28px;border-radius:6px;border:1px solid var(--ui-stroke-secondary);background:transparent;color:var(--ui-text-secondary);font-size:11px;font-weight:550;white-space:nowrap;cursor:pointer;transition:background .12s ease}
-.np-toggle[aria-pressed=true]{background:color-mix(in srgb,var(--ui-accent) 18%,transparent);color:var(--ui-accent);border-color:color-mix(in srgb,var(--ui-accent) 35%,transparent)}
-.np-toggle[aria-pressed=false]{opacity:.65}
 .np-settings-row .np-selects{gap:6px}
 .np-settings-row .np-selects button{height:28px}
 .np-settings-row .np-selects button span{font-size:11px}
@@ -1060,7 +1057,7 @@ function PricesPage({ ctx }) {
               })
             }),
             jsx('div', { className: 'np-settings-row', style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [
-              jsx('button', { type: 'button', 'aria-pressed': refreshSettings.autoRefresh, onClick: () => refreshSettings.changeAuto(!refreshSettings.autoRefresh), className: 'np-toggle', children: t('autoRefresh') }),
+              jsx(Button, { variant: 'secondary', size: 'xs', type: 'button', 'aria-pressed': refreshSettings.autoRefresh, onClick: () => refreshSettings.changeAuto(!refreshSettings.autoRefresh), children: t('autoRefresh') }),
               jsx('div', { style: { display: refreshSettings.autoRefresh ? 'flex' : 'none', alignItems: 'center', gap: 6 }, children: [
                 jsxs(Select, { value: String(refreshSettings.intervalNum), onValueChange: v => refreshSettings.changeIntervalNum(Number(v)), children: [
                   jsx(SelectTrigger, { size: 'sm', 'aria-label': t('refreshInterval'), children: jsx(SelectValue, {}) }),
@@ -1074,7 +1071,7 @@ function PricesPage({ ctx }) {
                   ] })
                 ] })
               ] }),
-              jsx('button', { type: 'button', 'aria-pressed': refreshSettings.notifyChanges, onClick: () => refreshSettings.changeNotify(!refreshSettings.notifyChanges), className: 'np-toggle', children: t('notify') })
+              jsx(Button, { variant: 'secondary', size: 'xs', type: 'button', 'aria-pressed': refreshSettings.notifyChanges, onClick: () => refreshSettings.changeNotify(!refreshSettings.notifyChanges), children: t('notify') })
             ] })
           ] })
         ] }),
