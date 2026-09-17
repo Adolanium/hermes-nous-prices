@@ -481,20 +481,20 @@ function useCatalog(profile, ctx) {
   })
   const changeAuto = next => {
     setAutoRefresh(next)
-    try { ctx.storage.set(AUTO_REFRESH_KEY, next) } catch { /* ignore */ }
+    try { ctx.storage.set(AUTO_REFRESH_KEY, next) } catch {}
   }
   const changeIntervalNum = n => {
     const v = Number(n)
     setIntervalNum(v)
-    try { ctx.storage.set(REFRESH_INTERVAL_NUM_KEY, v) } catch { /* ignore */ }
+    try { ctx.storage.set(REFRESH_INTERVAL_NUM_KEY, v) } catch {}
   }
   const changeIntervalUnit = u => {
     setIntervalUnit(u)
-    try { ctx.storage.set(REFRESH_INTERVAL_UNIT_KEY, u) } catch { /* ignore */ }
+    try { ctx.storage.set(REFRESH_INTERVAL_UNIT_KEY, u) } catch {}
   }
   const changeNotify = next => {
     setNotifyChanges(next)
-    try { ctx.storage.set(PRICING_NOTIFY_KEY, next) } catch { /* ignore */ }
+    try { ctx.storage.set(PRICING_NOTIFY_KEY, next) } catch {}
     if (next === false) pricingChange.set(null)
   }
   const refreshSettings = { autoRefresh, intervalNum, intervalUnit, notifyChanges,
@@ -1064,21 +1064,19 @@ function PricesPage({ ctx }) {
             }),
             jsx('div', { className: 'np-settings-row', style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [
               jsx('button', { type: 'button', 'aria-pressed': refreshSettings.autoRefresh, onClick: () => refreshSettings.changeAuto(!refreshSettings.autoRefresh), className: 'np-toggle', children: t('autoRefresh') }),
-              refreshSettings.autoRefresh
-                ? jsxs(Fragment, { children: [
-                    jsxs(Select, { value: String(refreshSettings.intervalNum), onValueChange: v => refreshSettings.changeIntervalNum(Number(v)), children: [
-                      jsx(SelectTrigger, { size: 'sm', 'aria-label': t('refreshInterval'), children: jsx(SelectValue, {}) }),
-                      jsx(SelectContent, { children: REFRESH_INTERVAL_NUMBERS.map(n => jsx(SelectItem, { value: String(n), children: String(n) }, String(n))) })
-                    ] }),
-                    jsxs(Select, { value: refreshSettings.intervalUnit, onValueChange: u => refreshSettings.changeIntervalUnit(u), children: [
-                      jsx(SelectTrigger, { size: 'sm', children: jsx(SelectValue, {}) }),
-                      jsxs(SelectContent, { children: [
-                        jsx(SelectItem, { value: 'minutes', children: t('minutes') }, 'minutes'),
-                        jsx(SelectItem, { value: 'hours', children: t('hours') }, 'hours')
-                      ] })
-                    ] })
+              jsx('div', { style: { display: refreshSettings.autoRefresh ? 'flex' : 'none', alignItems: 'center', gap: 6 }, children: [
+                jsxs(Select, { value: String(refreshSettings.intervalNum), onValueChange: v => refreshSettings.changeIntervalNum(Number(v)), children: [
+                  jsx(SelectTrigger, { size: 'sm', 'aria-label': t('refreshInterval'), children: jsx(SelectValue, {}) }),
+                  jsx(SelectContent, { children: REFRESH_INTERVAL_NUMBERS.map(n => jsx(SelectItem, { value: String(n), children: String(n) }, String(n))) })
+                ] }),
+                jsxs(Select, { value: refreshSettings.intervalUnit, onValueChange: u => refreshSettings.changeIntervalUnit(u), children: [
+                  jsx(SelectTrigger, { size: 'sm', children: jsx(SelectValue, {}) }),
+                  jsxs(SelectContent, { children: [
+                    jsx(SelectItem, { value: 'minutes', children: t('minutes') }, 'minutes'),
+                    jsx(SelectItem, { value: 'hours', children: t('hours') }, 'hours')
                   ] })
-                : null,
+                ] })
+              ] }),
               jsx('button', { type: 'button', 'aria-pressed': refreshSettings.notifyChanges, onClick: () => refreshSettings.changeNotify(!refreshSettings.notifyChanges), className: 'np-toggle', children: t('notify') })
             ] })
           ] })
