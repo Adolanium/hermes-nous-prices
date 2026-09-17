@@ -71,6 +71,16 @@ const EN = {
   priceDesc: 'Input price · high to low',
   outputPriceAsc: 'Output price · low to high',
   outputPriceDesc: 'Output price · high to low',
+  contextDesc: 'Context size · largest first',
+  priceChangesTitle: 'Pricing updated',
+  priceChangesMessage: n => `${n} model${n === 1 ? '' : 's'} changed`,
+  autoRefresh: 'Auto refresh',
+  refreshInterval: 'Refresh interval',
+  minutes: 'minutes',
+  hours: 'hours',
+  notify: 'Notify',
+  toggleOn: 'On',
+  toggleOff: 'Off',
   byName: 'Name',
   byDiscount: 'Biggest sale',
   refresh: 'Refresh prices',
@@ -305,6 +315,11 @@ const CSS = `
 .np-cell-sub{display:block;font-size:10px;color:var(--ui-text-tertiary);margin-top:1px}
 .np-detail-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .np-detail-note{font-size:10.5px;color:var(--ui-text-tertiary);margin-left:auto}
+.np-toggle-on{color:var(--ui-accent)!important;border-color:color-mix(in srgb,var(--ui-accent) 55%,var(--ui-stroke-secondary))!important}
+.np-toggle-off{color:var(--ui-text-tertiary)!important;border-color:var(--ui-stroke-secondary)!important;opacity:.82}
+.np-settings-row .np-selects{gap:6px}
+.np-settings-row .np-selects button{height:28px}
+.np-settings-row .np-selects button span{font-size:11px}
 .np-empty{padding:56px 0}
 .np-error{padding:56px 24px}
 .np-loading{display:grid;place-items:center;padding:72px 0}
@@ -355,9 +370,77 @@ function isCatalogPending(payload) {
   return row?.pricing_pending === true || row?.free_tier_pending === true
 }
 
+function pricingFingerprint(row) {
+  const featured = new Set(row?.featured_models ?? [])
+  const unavailable = new Set(row?.unavailable_models ?? [])
+  return JSON.stringify((row?.models ?? []).filter(Boolean).sort().map(id => [
+    id,
+    row?.pricing?.[id]?.input ?? null,
+    row?.pricing?.[id]?.output ?? null,
+    row?.pricing?.[id]?.cache ?? null,
+    row?.pricing?.[id]?.discount_percent ?? null,
+    row?.pricing?.[id]?.was_input ?? null,
+    row?.pricing?.[id]?.was_output ?? null,
+    row?.pricing?.[id]?.free === true,
+    row?.context_lengths?.[id] ?? null,
+    row?.capabilities?.[id]?.reasoning === true,
+    row?.capabilities?.[id]?.fast === true,
+    featured.has(id),
+    unavailable.has(id)
+  ]))
+}
+
+function pricingChangeCount(before, after) {
+  if (!before || !after) return 0
+  const a = new Map(JSON.parse(before).map(row => [row[0], JSON.stringify(row.slice(1))]))
+  const b = new Map(JSON.parse(after).map(row => [row[0], JSON.stringify(row.slice(1))]))
+  const ids = new Set([...a.keys(), ...b.keys()])
+  return [...ids].filter(id => a.get(id) !== b.get(id)).length
+}
+
 // Query observers share requests, so they must also share the retry counter.
 // Weak keys release budgets when a query client or gateway is discarded.
 const catalogBudgets = new WeakMap()
+const REFRESH_INTERVAL_NUMBERS = [5, 10, 24]
+const refreshSettingsStores = new WeakMap()
+
+function normalizeRefreshSettings(value) {
+  return {
+    autoRefresh: value?.autoRefresh !== false,
+    intervalNum: REFRESH_INTERVAL_NUMBERS.includes(value?.intervalNum) ? value.intervalNum : 5,
+    intervalUnit: value?.intervalUnit === 'hours' ? 'hours' : 'minutes',
+    notifyChanges: value?.notifyChanges !== false
+  }
+}
+
+function refreshSettingsStore(ctx, profile) {
+  if (!refreshSettingsStores.has(ctx.storage)) refreshSettingsStores.set(ctx.storage, new Map())
+  const profiles = refreshSettingsStores.get(ctx.storage)
+  const key = `local.refreshSettings.v1.${profile || 'default'}`
+  if (!profiles.has(key)) {
+    let saved
+    try { saved = ctx.storage.get(key, null) } catch { /* Use defaults when storage is unavailable. */ }
+    profiles.set(key, atom(normalizeRefreshSettings(saved)))
+  }
+  return { key, store: profiles.get(key) }
+}
+
+function useRefreshSettings(ctx, profile) {
+  const { key, store } = refreshSettingsStore(ctx, profile)
+  const settings = useValue(store)
+  const change = patch => {
+    const next = normalizeRefreshSettings({ ...store.get(), ...patch })
+    store.set(next)
+    try { ctx.storage.set(key, next) } catch { /* Keep shared in-memory settings usable. */ }
+  }
+  return { ...settings,
+    changeAuto: autoRefresh => change({ autoRefresh }),
+    changeIntervalNum: intervalNum => change({ intervalNum: Number(intervalNum) }),
+    changeIntervalUnit: intervalUnit => change({ intervalUnit }),
+    changeNotify: notifyChanges => change({ notifyChanges })
+  }
+}
+
 function catalogBudget(queryClient, gateway, profile) {
   if (!catalogBudgets.has(queryClient)) catalogBudgets.set(queryClient, new WeakMap())
   const gateways = catalogBudgets.get(queryClient)
@@ -382,6 +465,8 @@ function loadPriceSnapshot(ctx, key) {
 }
 
 function useCatalog(profile, ctx) {
+  const t = usePluginI18n(ID)
+  const refreshSettings = useRefreshSettings(ctx, profile)
   const queryClient = useQueryClient()
   const storageKey = `local.prices.v1.${profile || 'default'}`
   const snapshot = useMemo(() => ({ value: loadPriceSnapshot(ctx, storageKey) }), [ctx, storageKey])
@@ -399,8 +484,17 @@ function useCatalog(profile, ctx) {
       budget.attempts = isCatalogPending(data) ? budget.attempts + 1 : 0
       const row = nousRow(data)
       if (row && !isCatalogPending(data) && Object.keys(row.pricing ?? {}).length) {
+        const fingerprint = pricingFingerprint(row)
+        const previousFingerprint = budget.fingerprint
+        budget.fingerprint = fingerprint
+        const { notifyChanges } = refreshSettingsStore(ctx, profile).store.get()
+        const changed = pricingChangeCount(previousFingerprint, fingerprint)
+        if (previousFingerprint && changed > 0 && notifyChanges) {
+          host.notify({ kind: 'info', title: t('priceChangesTitle'), message: t('priceChangesMessage', changed) })
+        }
         const saved = { version: 1, savedAt: Date.now(), models: row.models ?? [],
-          pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [] }
+          pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [],
+          context_lengths: row.context_lengths ?? {} }
         snapshot.value = saved
         try { ctx.storage.set(storageKey, saved) } catch { /* Storage failure must not discard live prices. */ }
       } else if (row && isCatalogPending(data) && snapshot.value) {
@@ -414,20 +508,25 @@ function useCatalog(profile, ctx) {
       throw error
     }
   }
+  const { autoRefresh, intervalNum, intervalUnit } = refreshSettings
+  const autoRefreshMs = autoRefresh ? intervalNum * (intervalUnit === 'hours' ? 3600000 : 60000) : false
   const catalog = useQuery({
     queryKey,
     initialData: () => snapshot.value ? {
       savedPricesAt: snapshot.value.savedAt,
       providers: [{ slug: NOUS, models: snapshot.value.models, pricing: snapshot.value.pricing,
         capabilities: snapshot.value.capabilities, featured_models: snapshot.value.featured_models,
+        context_lengths: snapshot.value.context_lengths ?? {},
         pricing_pending: true, free_tier_pending: true }]
     } : undefined,
     initialDataUpdatedAt: 0,
     queryFn: () => read(false),
-    staleTime: CATALOG_STALE_MS,
-    refetchInterval: query => isCatalogPending(query.state.data) && budget.attempts <= PENDING_REFETCH_ATTEMPTS
-      ? Math.min(PENDING_REFETCH_MS * 1.5 ** Math.max(0, budget.attempts - 1), PENDING_REFETCH_MAX_MS)
-      : CATALOG_STALE_MS,
+    staleTime: autoRefreshMs === false ? CATALOG_STALE_MS : autoRefreshMs,
+    refetchInterval: query => {
+      if (isCatalogPending(query.state.data) && budget.attempts <= PENDING_REFETCH_ATTEMPTS)
+        return Math.min(PENDING_REFETCH_MS * 1.5 ** Math.max(0, budget.attempts - 1), PENDING_REFETCH_MAX_MS)
+      return autoRefreshMs
+    },
     retry: 1
   })
   const refreshCatalog = async () => {
@@ -435,7 +534,7 @@ function useCatalog(profile, ctx) {
     await queryClient.cancelQueries({ queryKey, exact: true })
     return queryClient.fetchQuery({ queryKey, queryFn: () => read(true), staleTime: 0 })
   }
-  return { catalog, refreshCatalog }
+  return { catalog, refreshCatalog, refreshSettings }
 }
 
 function requireModelSave(result, message) {
@@ -608,7 +707,8 @@ const SORTS = {
   name: (a, b) => a.id.localeCompare(b.id),
   discount: (a, b) => (b.discount ?? -1) - (a.discount ?? -1) || rank(a.inputNum) - rank(b.inputNum),
   'output-price-asc': (a, b) => rank(a.outputNum) - rank(b.outputNum) || rank(a.inputNum) - rank(b.inputNum) || a.id.localeCompare(b.id),
-  'output-price-desc': (a, b) => rankDesc(b.outputNum) - rankDesc(a.outputNum) || rankDesc(b.inputNum) - rankDesc(a.inputNum) || a.id.localeCompare(b.id)
+  'output-price-desc': (a, b) => rankDesc(b.outputNum) - rankDesc(a.outputNum) || rankDesc(b.inputNum) - rankDesc(a.inputNum) || a.id.localeCompare(b.id),
+  'context-desc': (a, b) => rankDesc(b.contextLength) - rankDesc(a.contextLength) || a.id.localeCompare(b.id)
 }
 
 const rank = v => (v === null ? Number.POSITIVE_INFINITY : v)
@@ -827,7 +927,7 @@ function PricesPage({ ctx }) {
   const t = usePluginI18n(ID)
   const profile = useValue(host.state.profile)
   useGatewayWakeup()
-  const { catalog, refreshCatalog } = useCatalog(profile, ctx)
+  const { catalog, refreshCatalog, refreshSettings } = useCatalog(profile, ctx)
   const gateway = host.getGateway()
 
   const billing = useQuery({
@@ -971,7 +1071,24 @@ function PricesPage({ ctx }) {
               jsx(Button, { variant: 'ghost', size: 'icon', 'aria-label': t('refresh'), onClick: () => void refresh(), disabled: refreshing, children:
                 refreshing ? jsx(GlyphSpinner, { ariaLabel: t('refresh') }) : jsx(icons.RefreshCw, { 'aria-hidden': true })
               })
-            })
+            }),
+            jsx('div', { className: 'np-settings-row', style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [
+              jsx(Button, { variant: 'secondary', size: 'xs', type: 'button', className: refreshSettings.autoRefresh ? 'np-toggle-on' : 'np-toggle-off', 'aria-pressed': refreshSettings.autoRefresh, onClick: () => refreshSettings.changeAuto(!refreshSettings.autoRefresh), children: `${t('autoRefresh')}: ${refreshSettings.autoRefresh ? t('toggleOn') : t('toggleOff')}` }),
+              jsx('div', { style: { display: refreshSettings.autoRefresh ? 'flex' : 'none', alignItems: 'center', gap: 6 }, children: [
+                jsxs(Select, { value: String(refreshSettings.intervalNum), onValueChange: v => refreshSettings.changeIntervalNum(Number(v)), children: [
+                  jsx(SelectTrigger, { size: 'sm', 'aria-label': t('refreshInterval'), children: jsx(SelectValue, {}) }),
+                  jsx(SelectContent, { children: REFRESH_INTERVAL_NUMBERS.map(n => jsx(SelectItem, { value: String(n), children: String(n) }, String(n))) })
+                ] }),
+                jsxs(Select, { value: refreshSettings.intervalUnit, onValueChange: u => refreshSettings.changeIntervalUnit(u), children: [
+                  jsx(SelectTrigger, { size: 'sm', children: jsx(SelectValue, {}) }),
+                  jsxs(SelectContent, { children: [
+                    jsx(SelectItem, { value: 'minutes', children: t('minutes') }, 'minutes'),
+                    jsx(SelectItem, { value: 'hours', children: t('hours') }, 'hours')
+                  ] })
+                ] })
+              ] }),
+              jsx(Button, { variant: 'secondary', size: 'xs', type: 'button', className: refreshSettings.notifyChanges ? 'np-toggle-on' : 'np-toggle-off', 'aria-pressed': refreshSettings.notifyChanges, onClick: () => refreshSettings.changeNotify(!refreshSettings.notifyChanges), children: `${t('notify')}: ${refreshSettings.notifyChanges ? t('toggleOn') : t('toggleOff')}` })
+            ] })
           ] })
         ] }),
         jsx(AccountStrip, { billing: billing.data, ctx, t }),
@@ -1012,6 +1129,7 @@ function PricesPage({ ctx }) {
                     jsx(SelectItem, { value: 'price-desc', children: t('priceDesc') }, 'price-desc'),
                     jsx(SelectItem, { value: 'output-price-asc', children: t('outputPriceAsc') }, 'output-price-asc'),
                     jsx(SelectItem, { value: 'output-price-desc', children: t('outputPriceDesc') }, 'output-price-desc'),
+                    jsx(SelectItem, { value: 'context-desc', children: t('contextDesc') }, 'context-desc'),
                     jsx(SelectItem, { value: 'name', children: t('byName') }, 'name'),
                     jsx(SelectItem, { value: 'discount', children: t('byDiscount') }, 'discount')
                   ] })
