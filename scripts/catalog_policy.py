@@ -24,7 +24,6 @@ def strip_updater(source, mode):
         source, registrations = re.subn(r"(?m)^ *desktopUpdater\.register\(ctx\);?\n", "", source)
         if (panels, registrations) != (1, 1):
             raise ValueError("Updater UI changed; review catalog packaging")
-        source = source.replace("null", "jsx(desktopUpdater.Panel, {})", 1)
     elif mode == "ssh":
         source = cut(source, "// Public verification key only.", 'const ROUTE = "/ssh-connections";')
         source = cut(source, "function UpdateControls(", "export default {")

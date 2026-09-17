@@ -17,11 +17,6 @@ def build(check=False):
     name = dashboard["name"]
     source = (ROOT / "plugin.js").read_text(encoding="utf-8")
     managed = strip_updater(source, "shared")
-    notice_start = source.find("function PricingNotice({ ctx })")
-    notice_end = source.find("\nfunction Page({ ctx })", notice_start)
-    notice = source[notice_start:notice_end] + "\n" if notice_start >= 0 and notice_end > notice_start else ""
-    if notice and "function PricingNotice({ ctx })" not in managed:
-        managed = managed.replace("function Page({ ctx })", notice + "function Page({ ctx })", 1)
     manifest = {
         "name": name, "version": config["version"],
         "description": config["description"], "author": "Adolanium",

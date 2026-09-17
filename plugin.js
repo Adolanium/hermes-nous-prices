@@ -74,10 +74,6 @@ const EN = {
   contextDesc: 'Context size · largest first',
   priceChangesTitle: 'Pricing updated',
   priceChangesMessage: n => `${n} model${n === 1 ? '' : 's'} changed`,
-  dismiss: 'Dismiss',
-  priceNotifications: 'Price change notices',
-  priceNotificationsOn: 'On',
-  priceNotificationsOff: 'Off',
   autoRefresh: 'Auto refresh',
   refreshInterval: 'Refresh interval',
   minutes: 'minutes',
@@ -395,7 +391,6 @@ function pricingChangeCount(before, after) {
 // Query observers share requests, so they must also share the retry counter.
 // Weak keys release budgets when a query client or gateway is discarded.
 const catalogBudgets = new WeakMap()
-const pricingChange = atom(null)
 const PRICING_NOTIFY_KEY = 'local.notifyPriceChanges'
 const AUTO_REFRESH_KEY = 'local.autoRefresh'
 const REFRESH_INTERVAL_NUM_KEY = 'local.refreshIntervalNum'
@@ -426,6 +421,7 @@ function loadPriceSnapshot(ctx, key) {
 }
 
 function useCatalog(profile, ctx) {
+  const t = usePluginI18n(ID)
   const queryClient = useQueryClient()
   const storageKey = `local.prices.v1.${profile || 'default'}`
   const snapshot = useMemo(() => ({ value: loadPriceSnapshot(ctx, storageKey) }), [ctx, storageKey])
@@ -450,7 +446,9 @@ function useCatalog(profile, ctx) {
         let notifyChanges = true
         try { notifyChanges = ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false } catch { /* use default */ }
         const changed = pricingChangeCount(previousFingerprint, fingerprint)
-        if (previousFingerprint && changed > 0 && notifyChanges) pricingChange.set({ count: changed, key: fingerprintKey })
+        if (previousFingerprint && changed > 0 && notifyChanges) {
+          host.notify({ kind: 'info', title: t('priceChangesTitle'), message: t('priceChangesMessage', changed) })
+        }
         const saved = { version: 1, savedAt: Date.now(), models: row.models ?? [],
           pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [] }
         snapshot.value = saved
@@ -495,7 +493,6 @@ function useCatalog(profile, ctx) {
   const changeNotify = next => {
     setNotifyChanges(next)
     try { ctx.storage.set(PRICING_NOTIFY_KEY, next) } catch {}
-    if (next === false) pricingChange.set(null)
   }
   const refreshSettings = { autoRefresh, intervalNum, intervalUnit, notifyChanges,
     changeAuto, changeIntervalNum, changeIntervalUnit, changeNotify }
@@ -1457,26 +1454,6 @@ const desktopUpdater = createDesktopUpdater({
   id: ID, name: 'Nous Portal Pricing', version: VERSION, key: UPDATE_KEY,
   repo: 'Adolanium/hermes-nous-prices', folders: ['hermes-nous-prices', 'nous-prices'], files: ['plugin.js']
 });
-
-function PricingNotice({ ctx }) {
-  const t = usePluginI18n(ID)
-  const notice = useValue(pricingChange)
-  const [enabled, setEnabled] = useState(() => ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false)
-  if (!notice && enabled) return null
-  const toggle = () => {
-    const next = !enabled
-    setEnabled(next)
-    ctx.storage.set(PRICING_NOTIFY_KEY, next)
-    if (!next) pricingChange.set(null)
-  }
-  return jsxs('section', { style: { flexShrink: 0, padding: '8px 16px', borderTop: '1px solid var(--ui-stroke-secondary)', color: 'var(--ui-text-secondary)', fontSize: 12 }, children: [
-    jsxs('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }, children: [
-      jsx('span', { style: { marginRight: 'auto' }, children: notice ? `${t('priceChangesTitle')} — ${t('priceChangesMessage', notice.count)}` : t('priceNotifications') }),
-      jsx('button', { type: 'button', onClick: toggle, style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: `${t('priceNotifications')}: ${enabled ? t('priceNotificationsOn') : t('priceNotificationsOff')}` }),
-      notice ? jsx('button', { type: 'button', onClick: () => pricingChange.set(null), style: { padding: '6px 10px', minHeight: 32, borderRadius: 6, border: '1px solid var(--ui-stroke-secondary)', background: 'transparent', color: 'var(--ui-text-primary)', font: 'inherit' }, children: t('dismiss') }) : null
-    ] })
-  ] })
-}
 
 function Page({ ctx }) {
   return jsxs('div', { className: 'np-page', children: [
