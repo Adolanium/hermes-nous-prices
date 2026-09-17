@@ -7,6 +7,7 @@ local one, without copying credentials into the Desktop process.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -57,7 +58,7 @@ def catalog(
             for row in payload.get("providers", []):
                 row["context_lengths"] = {}
                 if str(row.get("slug") or "").lower() == "nous":
-                    row["context_lengths"] = _nous_context_lengths(row.get("models") or [])
+                    row["context_lengths"] = _nous_context_lengths(row.get("models") or [], profile)
         return _jsonable(payload)
     except HTTPException:
         raise
@@ -65,10 +66,27 @@ def catalog(
         raise HTTPException(status_code=502, detail=f"model catalog unavailable: {exc}") from exc
 
 
-def _nous_context_lengths(models: list[str]) -> dict[str, int]:
-    """Read exact Portal IDs while the caller's profile scope is active."""
+_lengths_cache: dict[str, tuple[int, dict[str, int]]] = {}
+
+
+def _model_fingerprint(models: list[str]) -> str:
+    """Fingerprint a model list so we can skip context reloads when unchanged."""
+    return ",".join(sorted(m for m in models if isinstance(m, str)))
+
+
+def _nous_context_lengths(models: list[str], profile: str = "") -> dict[str, int]:
+    """Read exact Portal IDs while the caller's profile scope is active.
+
+    Context lengths are cached per profile + model-list fingerprint.
+    They are only reloaded when the model list changes or on startup.
+    """
     if not models:
         return {}
+    fp = _model_fingerprint(models)
+    cache_key = f"{profile or 'default'}:{fp}"
+    cached = _lengths_cache.get(cache_key)
+    if cached:
+        return cached[1]
     try:
         from hermes_cli.auth import (
             _resolve_verify, get_provider_auth_state, resolve_nous_runtime_credentials,
@@ -94,6 +112,11 @@ def _nous_context_lengths(models: list[str]) -> dict[str, int]:
             # Do not use the generic resolver: it also matches aliases and substrings.
             if isinstance(model, str) and model in wanted and type(size) is int and size > 0:
                 lengths[model] = size
+        _lengths_cache[cache_key] = (int(time.time()), lengths)
+        if len(_lengths_cache) > 16:
+            oldest = sorted(_lengths_cache.items(), key=lambda kv: kv[1][0])[:8]
+            for k, _ in oldest:
+                del _lengths_cache[k]
         return lengths
     except Exception:
         # Context metadata is optional; prices must remain available when it fails.

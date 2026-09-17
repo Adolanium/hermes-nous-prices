@@ -78,6 +78,11 @@ const EN = {
   priceNotifications: 'Price change notices',
   priceNotificationsOn: 'On',
   priceNotificationsOff: 'Off',
+  autoRefresh: 'Auto refresh',
+  refreshInterval: 'Refresh interval',
+  minutes: 'minutes',
+  hours: 'hours',
+  notify: 'Notify',
   byName: 'Name',
   byDiscount: 'Biggest sale',
   refresh: 'Refresh prices',
@@ -312,6 +317,12 @@ const CSS = `
 .np-cell-sub{display:block;font-size:10px;color:var(--ui-text-tertiary);margin-top:1px}
 .np-detail-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .np-detail-note{font-size:10.5px;color:var(--ui-text-tertiary);margin-left:auto}
+.np-toggle{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 10px;min-height:28px;border-radius:6px;border:1px solid var(--ui-stroke-secondary);background:transparent;color:var(--ui-text-secondary);font-size:11px;font-weight:550;white-space:nowrap;cursor:pointer;transition:background .12s ease}
+.np-toggle[aria-pressed=true]{background:color-mix(in srgb,var(--ui-accent) 18%,transparent);color:var(--ui-accent);border-color:color-mix(in srgb,var(--ui-accent) 35%,transparent)}
+.np-toggle[aria-pressed=false]{opacity:.65}
+.np-settings-row .np-selects{gap:6px}
+.np-settings-row .np-selects button{height:28px}
+.np-settings-row .np-selects button span{font-size:11px}
 .np-empty{padding:56px 0}
 .np-error{padding:56px 24px}
 .np-loading{display:grid;place-items:center;padding:72px 0}
@@ -386,6 +397,10 @@ function pricingChangeCount(before, after) {
 const catalogBudgets = new WeakMap()
 const pricingChange = atom(null)
 const PRICING_NOTIFY_KEY = 'local.notifyPriceChanges'
+const AUTO_REFRESH_KEY = 'local.autoRefresh'
+const REFRESH_INTERVAL_NUM_KEY = 'local.refreshIntervalNum'
+const REFRESH_INTERVAL_UNIT_KEY = 'local.refreshIntervalUnit'
+const REFRESH_INTERVAL_NUMBERS = [5, 10, 24]
 const pricingFingerprints = new Map()
 function catalogBudget(queryClient, gateway, profile) {
   if (!catalogBudgets.has(queryClient)) catalogBudgets.set(queryClient, new WeakMap())
@@ -451,8 +466,42 @@ function useCatalog(profile, ctx) {
       throw error
     }
   }
+  const [autoRefresh, setAutoRefresh] = useState(() => {
+    try { return ctx.storage.get(AUTO_REFRESH_KEY, true) !== false } catch { return true }
+  })
+  const [intervalNum, setIntervalNum] = useState(() => {
+    try { return ctx.storage.get(REFRESH_INTERVAL_NUM_KEY, 5) || 5 } catch { return 5 }
+  })
+  const [intervalUnit, setIntervalUnit] = useState(() => {
+    const u = ctx.storage.get(REFRESH_INTERVAL_UNIT_KEY, 'minutes')
+    return u === 'hours' ? 'hours' : 'minutes'
+  })
+  const [notifyChanges, setNotifyChanges] = useState(() => {
+    try { return ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false } catch { return true }
+  })
+  const changeAuto = next => {
+    setAutoRefresh(next)
+    try { ctx.storage.set(AUTO_REFRESH_KEY, next) } catch { /* ignore */ }
+  }
+  const changeIntervalNum = n => {
+    const v = Number(n)
+    setIntervalNum(v)
+    try { ctx.storage.set(REFRESH_INTERVAL_NUM_KEY, v) } catch { /* ignore */ }
+  }
+  const changeIntervalUnit = u => {
+    setIntervalUnit(u)
+    try { ctx.storage.set(REFRESH_INTERVAL_UNIT_KEY, u) } catch { /* ignore */ }
+  }
+  const changeNotify = next => {
+    setNotifyChanges(next)
+    try { ctx.storage.set(PRICING_NOTIFY_KEY, next) } catch { /* ignore */ }
+    if (next === false) pricingChange.set(null)
+  }
+  const refreshSettings = { autoRefresh, intervalNum, intervalUnit, notifyChanges,
+    changeAuto, changeIntervalNum, changeIntervalUnit, changeNotify }
+  const autoRefreshMs = autoRefresh ? intervalNum * (intervalUnit === 'hours' ? 3600000 : 60000) : false
   const catalog = useQuery({
-    queryKey,
+    queryKey: [...queryKey, autoRefresh, intervalNum, intervalUnit],
     initialData: () => snapshot.value ? {
       savedPricesAt: snapshot.value.savedAt,
       providers: [{ slug: NOUS, models: snapshot.value.models, pricing: snapshot.value.pricing,
@@ -461,10 +510,13 @@ function useCatalog(profile, ctx) {
     } : undefined,
     initialDataUpdatedAt: 0,
     queryFn: () => read(false),
-    staleTime: CATALOG_STALE_MS,
-    refetchInterval: query => isCatalogPending(query.state.data) && budget.attempts <= PENDING_REFETCH_ATTEMPTS
-      ? Math.min(PENDING_REFETCH_MS * 1.5 ** Math.max(0, budget.attempts - 1), PENDING_REFETCH_MAX_MS)
-      : CATALOG_STALE_MS,
+    staleTime: autoRefreshMs === false ? Infinity : autoRefreshMs,
+    refetchInterval: query => {
+      if (autoRefreshMs === false) return false
+      if (isCatalogPending(query.state.data) && budget.attempts <= PENDING_REFETCH_ATTEMPTS)
+        return Math.min(PENDING_REFETCH_MS * 1.5 ** Math.max(0, budget.attempts - 1), PENDING_REFETCH_MAX_MS)
+      return autoRefreshMs
+    },
     retry: 1
   })
   const refreshCatalog = async () => {
@@ -472,7 +524,7 @@ function useCatalog(profile, ctx) {
     await queryClient.cancelQueries({ queryKey, exact: true })
     return queryClient.fetchQuery({ queryKey, queryFn: () => read(true), staleTime: 0 })
   }
-  return { catalog, refreshCatalog }
+  return { catalog, refreshCatalog, refreshSettings }
 }
 
 function requireModelSave(result, message) {
@@ -865,7 +917,7 @@ function PricesPage({ ctx }) {
   const t = usePluginI18n(ID)
   const profile = useValue(host.state.profile)
   useGatewayWakeup()
-  const { catalog, refreshCatalog } = useCatalog(profile, ctx)
+  const { catalog, refreshCatalog, refreshSettings } = useCatalog(profile, ctx)
   const gateway = host.getGateway()
 
   const billing = useQuery({
@@ -1009,7 +1061,26 @@ function PricesPage({ ctx }) {
               jsx(Button, { variant: 'ghost', size: 'icon', 'aria-label': t('refresh'), onClick: () => void refresh(), disabled: refreshing, children:
                 refreshing ? jsx(GlyphSpinner, { ariaLabel: t('refresh') }) : jsx(icons.RefreshCw, { 'aria-hidden': true })
               })
-            })
+            }),
+            jsx('div', { className: 'np-settings-row', style: { display: 'flex', alignItems: 'center', gap: 8 }, children: [
+              jsx('button', { type: 'button', 'aria-pressed': refreshSettings.autoRefresh, onClick: () => refreshSettings.changeAuto(!refreshSettings.autoRefresh), className: 'np-toggle', children: t('autoRefresh') }),
+              refreshSettings.autoRefresh
+                ? jsxs(Fragment, { children: [
+                    jsxs(Select, { value: String(refreshSettings.intervalNum), onValueChange: v => refreshSettings.changeIntervalNum(Number(v)), children: [
+                      jsx(SelectTrigger, { size: 'sm', 'aria-label': t('refreshInterval'), children: jsx(SelectValue, {}) }),
+                      jsx(SelectContent, { children: REFRESH_INTERVAL_NUMBERS.map(n => jsx(SelectItem, { value: String(n), children: String(n) }, String(n))) })
+                    ] }),
+                    jsxs(Select, { value: refreshSettings.intervalUnit, onValueChange: u => refreshSettings.changeIntervalUnit(u), children: [
+                      jsx(SelectTrigger, { size: 'sm', children: jsx(SelectValue, {}) }),
+                      jsxs(SelectContent, { children: [
+                        jsx(SelectItem, { value: 'minutes', children: t('minutes') }, 'minutes'),
+                        jsx(SelectItem, { value: 'hours', children: t('hours') }, 'hours')
+                      ] })
+                    ] })
+                  ] })
+                : null,
+              jsx('button', { type: 'button', 'aria-pressed': refreshSettings.notifyChanges, onClick: () => refreshSettings.changeNotify(!refreshSettings.notifyChanges), className: 'np-toggle', children: t('notify') })
+            ] })
           ] })
         ] }),
         jsx(AccountStrip, { billing: billing.data, ctx, t }),
@@ -1164,7 +1235,6 @@ function PricingNotice({ ctx }) {
 function Page({ ctx }) {
   return jsxs('div', { className: 'np-page', children: [
     jsx('div', { style: { flex: 1, minHeight: 0, overflow: 'hidden' }, children: jsx(PricesPage, { ctx }) }),
-    jsx(PricingNotice, { ctx }),
     null
   ] });
 }
