@@ -72,8 +72,9 @@ Connect your Nous Portal account in Hermes Settings to load account information.
 
 Successful price reads are saved locally for each profile. Reopening the page or restarting Hermes shows the saved prices while a fresh request runs.
 
-- The catalog refreshes every **five minutes** while observed by the page or status bar.
-- A pending catalog gets up to **twelve faster retries**, with capped backoff shared by both views.
+- Auto refresh defaults to **five minutes** while the page or status bar is mounted. The header controls let you choose 5, 10, or 24 minutes or hours, or turn periodic refresh off. Both views use the same settings, saved separately for each profile.
+- Saved prices get an initial live fetch even when auto refresh is off. A pending catalog gets up to **twelve faster retries**, with capped backoff shared by both views.
+- **Notify** controls Hermes info notifications for later changes to model pricing or displayed metadata. The initial load does not notify.
 - The account balance refreshes every **thirty seconds** while the page is open.
 - Pending responses do not erase saved prices. Failed background reads preserve the last loaded data and show a notice.
 - Saved prices show a timestamp. Model changes wait for live availability checks.
@@ -166,7 +167,8 @@ Run the checks with:
 ```sh
 python scripts/build_catalog.py --check
 python -m pytest tests/test_api.py -q
-node --test tests/test_transport.mjs
+npm ci --ignore-scripts
+npm test
 ```
 
 To test discovery, API mounting, billing serialization and legacy model configs
@@ -181,3 +183,6 @@ The Gateway companion was contributed by [@rahlquist](https://github.com/rahlqui
 The context-window display was contributed by [@rahlquist](https://github.com/rahlquist)
 in [PR #3](https://github.com/Adolanium/hermes-nous-prices/pull/3). Thank you, @rahlquist,
 for adding model context sizes alongside pricing.
+Context sorting, context metadata caching, configurable auto refresh, and pricing
+notifications were contributed by [@rahlquist](https://github.com/rahlquist) in
+[PR #5](https://github.com/Adolanium/hermes-nous-prices/pull/5).

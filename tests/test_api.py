@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def api(request, monkeypatch):
     state = SimpleNamespace(profile=None, guest=False, failure=None, calls=[],
                             metadata_calls=[], metadata_failure=None,
-                            models=[{'id': 'work', 'context_length': 131072}])
+                            models=[{'id': 'work', 'context_length': 131072}],
+                            catalog_models=['work'])
 
     @contextmanager
     def scope(profile):
@@ -38,7 +39,7 @@ def api(request, monkeypatch):
 
     def catalog(context, **flags):
         state.calls.append((context.current_model, flags))
-        return {'providers': [{'slug': 'nous', 'models': ['work'], 'pricing': {'input': Decimal('1.25')}}]}
+        return {'providers': [{'slug': 'nous', 'models': list(state.catalog_models), 'pricing': {'input': Decimal('1.25')}}]}
 
     def billing():
         state.calls.append(('billing', state.profile))
@@ -110,6 +111,43 @@ def test_context_metadata_uses_scoped_nous_credentials(api):
         ('credentials', 'work'),
         ('work', 'https://nous.example/v1/models', {'Authorization': 'Bearer test-only-key'}),
     ]
+
+
+def test_context_cache_reuses_same_list_and_refreshes_changed_list(api):
+    client, state = api
+    url = '/api/plugins/nous-prices/catalog?profile=work'
+    first = client.get(url).json()['providers'][0]['context_lengths']
+    state.models[0]['context_length'] = 262144
+    assert client.get(url + '&refresh=true').json()['providers'][0]['context_lengths'] == first
+    assert len(state.metadata_calls) == 2
+    state.catalog_models.append('large')
+    state.models.append({'id': 'large', 'context_length': 1048576})
+    assert client.get(url).json()['providers'][0]['context_lengths'] == {'work': 262144, 'large': 1048576}
+    assert len(state.metadata_calls) == 4
+    state.catalog_models.reverse()
+    client.get(url)
+    assert len(state.metadata_calls) == 4
+
+
+def test_context_cache_is_scoped_by_profile(api):
+    client, state = api
+    client.get('/api/plugins/nous-prices/catalog?profile=work')
+    state.models[0]['context_length'] = 262144
+    personal = client.get('/api/plugins/nous-prices/catalog?profile=personal').json()
+    work = client.get('/api/plugins/nous-prices/catalog?profile=work').json()
+    assert personal['providers'][0]['context_lengths'] == {'work': 262144}
+    assert work['providers'][0]['context_lengths'] == {'work': 131072}
+    assert len(state.metadata_calls) == 4
+
+
+def test_context_cache_retries_failed_metadata_reads(api):
+    client, state = api
+    state.metadata_failure = RuntimeError('offline')
+    url = '/api/plugins/nous-prices/catalog?profile=work'
+    assert client.get(url).json()['providers'][0]['context_lengths'] == {}
+    state.metadata_failure = None
+    assert client.get(url).json()['providers'][0]['context_lengths'] == {'work': 131072}
+    assert len(state.metadata_calls) == 4
 
 
 @pytest.mark.parametrize('models', [

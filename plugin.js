@@ -371,13 +371,22 @@ function isCatalogPending(payload) {
 }
 
 function pricingFingerprint(row) {
+  const featured = new Set(row?.featured_models ?? [])
+  const unavailable = new Set(row?.unavailable_models ?? [])
   return JSON.stringify((row?.models ?? []).filter(Boolean).sort().map(id => [
     id,
     row?.pricing?.[id]?.input ?? null,
     row?.pricing?.[id]?.output ?? null,
     row?.pricing?.[id]?.cache ?? null,
     row?.pricing?.[id]?.discount_percent ?? null,
-    row?.context_lengths?.[id] ?? null
+    row?.pricing?.[id]?.was_input ?? null,
+    row?.pricing?.[id]?.was_output ?? null,
+    row?.pricing?.[id]?.free === true,
+    row?.context_lengths?.[id] ?? null,
+    row?.capabilities?.[id]?.reasoning === true,
+    row?.capabilities?.[id]?.fast === true,
+    featured.has(id),
+    unavailable.has(id)
   ]))
 }
 
@@ -392,12 +401,46 @@ function pricingChangeCount(before, after) {
 // Query observers share requests, so they must also share the retry counter.
 // Weak keys release budgets when a query client or gateway is discarded.
 const catalogBudgets = new WeakMap()
-const PRICING_NOTIFY_KEY = 'local.notifyPriceChanges'
-const AUTO_REFRESH_KEY = 'local.autoRefresh'
-const REFRESH_INTERVAL_NUM_KEY = 'local.refreshIntervalNum'
-const REFRESH_INTERVAL_UNIT_KEY = 'local.refreshIntervalUnit'
 const REFRESH_INTERVAL_NUMBERS = [5, 10, 24]
-const pricingFingerprints = new Map()
+const refreshSettingsStores = new WeakMap()
+
+function normalizeRefreshSettings(value) {
+  return {
+    autoRefresh: value?.autoRefresh !== false,
+    intervalNum: REFRESH_INTERVAL_NUMBERS.includes(value?.intervalNum) ? value.intervalNum : 5,
+    intervalUnit: value?.intervalUnit === 'hours' ? 'hours' : 'minutes',
+    notifyChanges: value?.notifyChanges !== false
+  }
+}
+
+function refreshSettingsStore(ctx, profile) {
+  if (!refreshSettingsStores.has(ctx.storage)) refreshSettingsStores.set(ctx.storage, new Map())
+  const profiles = refreshSettingsStores.get(ctx.storage)
+  const key = `local.refreshSettings.v1.${profile || 'default'}`
+  if (!profiles.has(key)) {
+    let saved
+    try { saved = ctx.storage.get(key, null) } catch { /* Use defaults when storage is unavailable. */ }
+    profiles.set(key, atom(normalizeRefreshSettings(saved)))
+  }
+  return { key, store: profiles.get(key) }
+}
+
+function useRefreshSettings(ctx, profile) {
+  const { key, store } = refreshSettingsStore(ctx, profile)
+  const settings = useValue(store)
+  const change = patch => {
+    const next = normalizeRefreshSettings({ ...store.get(), ...patch })
+    store.set(next)
+    try { ctx.storage.set(key, next) } catch { /* Keep shared in-memory settings usable. */ }
+  }
+  return { ...settings,
+    changeAuto: autoRefresh => change({ autoRefresh }),
+    changeIntervalNum: intervalNum => change({ intervalNum: Number(intervalNum) }),
+    changeIntervalUnit: intervalUnit => change({ intervalUnit }),
+    changeNotify: notifyChanges => change({ notifyChanges })
+  }
+}
+
 function catalogBudget(queryClient, gateway, profile) {
   if (!catalogBudgets.has(queryClient)) catalogBudgets.set(queryClient, new WeakMap())
   const gateways = catalogBudgets.get(queryClient)
@@ -423,6 +466,7 @@ function loadPriceSnapshot(ctx, key) {
 
 function useCatalog(profile, ctx) {
   const t = usePluginI18n(ID)
+  const refreshSettings = useRefreshSettings(ctx, profile)
   const queryClient = useQueryClient()
   const storageKey = `local.prices.v1.${profile || 'default'}`
   const snapshot = useMemo(() => ({ value: loadPriceSnapshot(ctx, storageKey) }), [ctx, storageKey])
@@ -441,17 +485,16 @@ function useCatalog(profile, ctx) {
       const row = nousRow(data)
       if (row && !isCatalogPending(data) && Object.keys(row.pricing ?? {}).length) {
         const fingerprint = pricingFingerprint(row)
-        const fingerprintKey = `${profile || 'default'}:${connection?.connectionId || 'local'}`
-        const previousFingerprint = pricingFingerprints.get(fingerprintKey)
-        pricingFingerprints.set(fingerprintKey, fingerprint)
-        let notifyChanges = true
-        try { notifyChanges = ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false } catch { /* use default */ }
+        const previousFingerprint = budget.fingerprint
+        budget.fingerprint = fingerprint
+        const { notifyChanges } = refreshSettingsStore(ctx, profile).store.get()
         const changed = pricingChangeCount(previousFingerprint, fingerprint)
         if (previousFingerprint && changed > 0 && notifyChanges) {
           host.notify({ kind: 'info', title: t('priceChangesTitle'), message: t('priceChangesMessage', changed) })
         }
         const saved = { version: 1, savedAt: Date.now(), models: row.models ?? [],
-          pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [] }
+          pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [],
+          context_lengths: row.context_lengths ?? {} }
         snapshot.value = saved
         try { ctx.storage.set(storageKey, saved) } catch { /* Storage failure must not discard live prices. */ }
       } else if (row && isCatalogPending(data) && snapshot.value) {
@@ -465,52 +508,21 @@ function useCatalog(profile, ctx) {
       throw error
     }
   }
-  const [autoRefresh, setAutoRefresh] = useState(() => {
-    try { return ctx.storage.get(AUTO_REFRESH_KEY, true) !== false } catch { return true }
-  })
-  const [intervalNum, setIntervalNum] = useState(() => {
-    try { return ctx.storage.get(REFRESH_INTERVAL_NUM_KEY, 5) || 5 } catch { return 5 }
-  })
-  const [intervalUnit, setIntervalUnit] = useState(() => {
-    const u = ctx.storage.get(REFRESH_INTERVAL_UNIT_KEY, 'minutes')
-    return u === 'hours' ? 'hours' : 'minutes'
-  })
-  const [notifyChanges, setNotifyChanges] = useState(() => {
-    try { return ctx.storage.get(PRICING_NOTIFY_KEY, true) !== false } catch { return true }
-  })
-  const changeAuto = next => {
-    setAutoRefresh(next)
-    try { ctx.storage.set(AUTO_REFRESH_KEY, next) } catch {}
-  }
-  const changeIntervalNum = n => {
-    const v = Number(n)
-    setIntervalNum(v)
-    try { ctx.storage.set(REFRESH_INTERVAL_NUM_KEY, v) } catch {}
-  }
-  const changeIntervalUnit = u => {
-    setIntervalUnit(u)
-    try { ctx.storage.set(REFRESH_INTERVAL_UNIT_KEY, u) } catch {}
-  }
-  const changeNotify = next => {
-    setNotifyChanges(next)
-    try { ctx.storage.set(PRICING_NOTIFY_KEY, next) } catch {}
-  }
-  const refreshSettings = { autoRefresh, intervalNum, intervalUnit, notifyChanges,
-    changeAuto, changeIntervalNum, changeIntervalUnit, changeNotify }
+  const { autoRefresh, intervalNum, intervalUnit } = refreshSettings
   const autoRefreshMs = autoRefresh ? intervalNum * (intervalUnit === 'hours' ? 3600000 : 60000) : false
   const catalog = useQuery({
-    queryKey: [...queryKey, autoRefresh, intervalNum, intervalUnit],
+    queryKey,
     initialData: () => snapshot.value ? {
       savedPricesAt: snapshot.value.savedAt,
       providers: [{ slug: NOUS, models: snapshot.value.models, pricing: snapshot.value.pricing,
         capabilities: snapshot.value.capabilities, featured_models: snapshot.value.featured_models,
+        context_lengths: snapshot.value.context_lengths ?? {},
         pricing_pending: true, free_tier_pending: true }]
     } : undefined,
     initialDataUpdatedAt: 0,
     queryFn: () => read(false),
-    staleTime: autoRefreshMs === false ? Infinity : autoRefreshMs,
+    staleTime: autoRefreshMs === false ? CATALOG_STALE_MS : autoRefreshMs,
     refetchInterval: query => {
-      if (autoRefreshMs === false) return false
       if (isCatalogPending(query.state.data) && budget.attempts <= PENDING_REFETCH_ATTEMPTS)
         return Math.min(PENDING_REFETCH_MS * 1.5 ** Math.max(0, budget.attempts - 1), PENDING_REFETCH_MAX_MS)
       return autoRefreshMs

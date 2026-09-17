@@ -5,6 +5,16 @@ import test from 'node:test'
 
 for (const file of ['plugin.js', 'desktop/plugin.js', 'catalog/desktop/plugin.js']) {
   const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+  test(`${file}: context sort puts largest models first and unknown sizes last`, () => {
+    const context = vm.createContext({})
+    vm.runInContext(source.slice(source.indexOf('const SORTS ='), source.indexOf('const fold =')), context)
+    const sorter = vm.runInContext("SORTS['context-desc']", context)
+    const entries = [
+      { id: 'unknown', contextLength: null }, { id: 'small', contextLength: 8192 },
+      { id: 'large-b', contextLength: 1048576 }, { id: 'large-a', contextLength: 1048576 }
+    ]
+    assert.deepEqual(entries.sort(sorter).map(row => row.id), ['large-a', 'large-b', 'small', 'unknown'])
+  })
   test(`${file}: catalog context reaches model rows and details`, () => {
     const element = (type, props) => ({ type: typeof type === 'function' ? type.name : type, ...props })
     const context = vm.createContext({
