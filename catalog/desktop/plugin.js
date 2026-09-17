@@ -354,7 +354,7 @@ function fetchBilling(ctx, profile, gateway) {
 }
 
 function nousRow(payload) {
-  return (payload?.providers ?? []).find(p => p?.slug === NOUS) ?? null
+  return (payload?.providers ?? []).find(p => p?.slug === NOUS) ?? jsx(desktopUpdater.Panel, {})
 }
 
 function isCatalogPending(payload) {

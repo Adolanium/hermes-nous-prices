@@ -24,6 +24,7 @@ def strip_updater(source, mode):
         source, registrations = re.subn(r"(?m)^ *desktopUpdater\.register\(ctx\);?\n", "", source)
         if (panels, registrations) != (1, 1):
             raise ValueError("Updater UI changed; review catalog packaging")
+        source = source.replace("null", "jsx(desktopUpdater.Panel, {})", 1)
     elif mode == "ssh":
         source = cut(source, "// Public verification key only.", 'const ROUTE = "/ssh-connections";')
         source = cut(source, "function UpdateControls(", "export default {")
@@ -37,7 +38,7 @@ def strip_updater(source, mode):
                 raise ValueError("SSH updater exports changed: " + symbol)
     elif mode != "none":
         raise ValueError("Unknown updater mode: " + mode)
-    forbidden = ("desktopUpdater", "createDesktopUpdater", "UPDATE_KEY", "UpdateControls", "runUpdate", "loadUpdateBackup", "Check for updates", "releases/latest", "release-manifest.json")
+    forbidden = ("createDesktopUpdater", "UPDATE_KEY", "UpdateControls", "runUpdate", "loadUpdateBackup", "Check for updates", "releases/latest", "release-manifest.json", "desktopUpdater.register")
     if mode != "none" and any(word in source for word in forbidden):
         raise ValueError("Catalog package still contains self-update code")
     return source
