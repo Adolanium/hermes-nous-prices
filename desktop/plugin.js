@@ -40,7 +40,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
-const VERSION = '0.1.1'
+const VERSION = '0.1.2'
 const ID = 'nous-prices'
 const PATH = '/nous-prices'
 const NOUS = 'nous'
