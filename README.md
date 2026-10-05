@@ -159,7 +159,7 @@ The catalog entry is named `hermes-nous-prices`; the installed package and its A
 For development, edit root `plugin.js`, `dashboard/`, and `__init__.py`, then run
 `python scripts/build_catalog.py`. Commit the generated `desktop/` and `catalog/`
 files. CI checks both distributions and runs HTTP and Desktop transport tests.
-Catalog packaging releases use `catalog-v0.1.1-2` and are not marked as the latest
+Catalog packaging releases use `catalog-v0.1.2` and are not marked as the latest
 standalone release.
 
 Run the checks with:

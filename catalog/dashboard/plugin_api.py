@@ -37,7 +37,7 @@ def _profile_scope(profile: Optional[str]):
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "plugin": "nous-prices", "version": "0.1.1"}
+    return {"ok": True, "plugin": "nous-prices", "version": "0.1.2"}
 
 
 @router.get("/catalog")
@@ -128,12 +128,18 @@ def billing(profile: Optional[str] = Query(None)) -> dict[str, Any]:
     """Return the parsed account state without exposing portal credentials."""
     try:
         from agent.billing_view import BillingState, build_billing_state
-        from hermes_cli.anon_auth import guest_carries_inference
+        import inspect
+        try:
+            from hermes_cli.anon_auth import has_free_tier_account as account_check
+        except ImportError:
+            from hermes_cli.anon_auth import guest_carries_inference as account_check
         from tui_gateway.billing_view import _serialize_billing_state
         with _profile_scope(profile):
-            free_tier = guest_carries_inference()
+            free_tier = account_check()
             state = BillingState(logged_in=False) if free_tier else build_billing_state()
-            return _jsonable(_serialize_billing_state(state, free_tier=free_tier))
+            parameters = inspect.signature(_serialize_billing_state).parameters
+            flag = "free_tier_account" if "free_tier_account" in parameters else "free_tier"
+            return _jsonable(_serialize_billing_state(state, **{flag: free_tier}))
     except HTTPException:
         raise
     except Exception as exc:

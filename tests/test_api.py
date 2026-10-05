@@ -191,11 +191,21 @@ def test_billing_preserves_account_strip_contract(api):
     assert state.profile is None
 
 
-def test_guest_does_not_load_account_billing(api):
+@pytest.mark.parametrize('current_api', [False, True])
+def test_guest_does_not_load_account_billing(api, monkeypatch, current_api):
     client, state = api
     state.guest = True
+    if current_api:
+        auth = sys.modules['hermes_cli.anon_auth']
+        monkeypatch.delattr(auth, 'guest_carries_inference')
+        monkeypatch.setattr(auth, 'has_free_tier_account', lambda: state.guest, raising=False)
+        def serialize(value, *, free_tier_account=False):
+            return {'ok': True, 'logged_in': value.logged_in, 'free_tier_account': free_tier_account}
+        monkeypatch.setattr(sys.modules['tui_gateway.billing_view'], '_serialize_billing_state', serialize)
     payload = client.get('/api/plugins/nous-prices/billing').json()
-    assert payload['free_tier'] and not payload['logged_in']
+    flag = 'free_tier_account' if current_api else 'free_tier'
+    assert payload[flag] is True
+    assert payload['logged_in'] is False
     assert not state.calls
 
 

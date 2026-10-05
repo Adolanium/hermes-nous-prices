@@ -24,8 +24,7 @@ def runtime(tmp_path, monkeypatch):
     monkeypatch.setenv('HERMES_DEV_BILLING_FIXTURE', 'card')
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from hermes_cli import web_server, web_server_dashboard, plugins_cmd, anon_auth
-    monkeypatch.setattr(anon_auth, 'guest_carries_inference', lambda: False)
+    from hermes_cli import web_server, web_server_dashboard, plugins_cmd
     app = FastAPI()
     monkeypatch.setattr(web_server, 'app', app)
     monkeypatch.setattr(web_server, '_get_dashboard_plugins', web_server_dashboard._discover_dashboard_plugins)
