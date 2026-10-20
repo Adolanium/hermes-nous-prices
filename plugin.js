@@ -73,7 +73,7 @@ const EN = {
   outputPriceDesc: 'Output price · high to low',
   contextDesc: 'Context size · largest first',
   priceChangesTitle: 'Pricing updated',
-  priceChangesMessage: n => `${n} model${n === 1 ? '' : 's'} changed`,
+  priceChangesMessage: models => `${models.length} model${models.length === 1 ? '' : 's'} changed: ${Array.isArray(models) ? models.join(', ') : models}`,
   autoRefresh: 'Auto refresh',
   refreshInterval: 'Refresh interval',
   minutes: 'minutes',
@@ -390,12 +390,16 @@ function pricingFingerprint(row) {
   ]))
 }
 
-function pricingChangeCount(before, after) {
-  if (!before || !after) return 0
+function pricingChangedModels(before, after) {
+  if (!before || !after) return []
   const a = new Map(JSON.parse(before).map(row => [row[0], JSON.stringify(row.slice(1))]))
   const b = new Map(JSON.parse(after).map(row => [row[0], JSON.stringify(row.slice(1))]))
   const ids = new Set([...a.keys(), ...b.keys()])
-  return [...ids].filter(id => a.get(id) !== b.get(id)).length
+  return [...ids].filter(id => a.get(id) !== b.get(id)).sort()
+}
+
+function pricingChangeCount(before, after) {
+  return pricingChangedModels(before, after).length
 }
 
 // Query observers share requests, so they must also share the retry counter.
@@ -487,10 +491,10 @@ function useCatalog(profile, ctx) {
         const fingerprint = pricingFingerprint(row)
         const previousFingerprint = budget.fingerprint
         budget.fingerprint = fingerprint
+        const changedModels = pricingChangedModels(previousFingerprint, fingerprint)
         const { notifyChanges } = refreshSettingsStore(ctx, profile).store.get()
-        const changed = pricingChangeCount(previousFingerprint, fingerprint)
-        if (previousFingerprint && changed > 0 && notifyChanges) {
-          host.notify({ kind: 'info', title: t('priceChangesTitle'), message: t('priceChangesMessage', changed) })
+        if (previousFingerprint && changedModels.length > 0 && notifyChanges) {
+          host.notify({ kind: 'info', title: t('priceChangesTitle'), message: t('priceChangesMessage', changedModels) })
         }
         const saved = { version: 1, savedAt: Date.now(), models: row.models ?? [],
           pricing: row.pricing, capabilities: row.capabilities ?? {}, featured_models: row.featured_models ?? [],
