@@ -144,7 +144,7 @@ for (const file of ['plugin.js', 'desktop/plugin.js', 'catalog/desktop/plugin.js
       update(h.state.row); await h.refresh()
       assert.equal(h.notices.length, before + 1)
       assert.equal(h.notices.at(-1).kind, 'info')
-      assert.equal(h.notices.at(-1).message, 'priceChangesMessage:1')
+      assert.equal(h.notices.at(-1).message, 'priceChangesMessage:work')
     }
     await h.change(() => h.results.page.refreshSettings.changeNotify(false))
     h.state.row.pricing.work.input = '8'; await h.refresh()
