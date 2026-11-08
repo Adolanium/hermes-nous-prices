@@ -5,8 +5,28 @@ Hermes updates so their UI and Gateway API update together.
 """
 import argparse
 import json
+import re
 from pathlib import Path
 from catalog_policy import strip_updater
+
+
+# Hermes Desktop reads a package's name from a `name:` line at the start of a line
+# (detectPluginComponents in apps/desktop/electron/desktop-plugin-install.ts). A JSON
+# manifest has no such line, so Desktop named the desktop half after the `catalog/`
+# folder, and every package built this way collided in `desktop-plugins/catalog`.
+DESKTOP_NAME = re.compile(r"""^name:\s*['"]?([^'"\n]+)['"]?\s*$""", re.M)
+
+
+def manifest_yaml(manifest):
+    """Block-style YAML with JSON scalars: dependency-free, and readable by Desktop."""
+    for key, value in manifest.items():
+        if isinstance(value, dict) or (isinstance(value, list) and any(isinstance(v, (dict, list)) for v in value)):
+            raise ValueError(f"manifest_yaml writes flat values only; {key} is nested")
+    text = "".join(f"{key}: {json.dumps(value)}\n" for key, value in manifest.items())
+    match = DESKTOP_NAME.search(text)
+    if not match or match.group(1).strip() != manifest["name"]:
+        raise ValueError("Hermes Desktop would not read the package name from catalog/plugin.yaml")
+    return text
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -27,7 +47,7 @@ def build(check=False):
     # The native manifest, dashboard API namespace and Desktop ID must agree.
     # The public catalog entry can independently be named hermes-nous-prices.
     outputs = {
-        "catalog/plugin.yaml": json.dumps(manifest, indent=2) + "\n",
+        "catalog/plugin.yaml": manifest_yaml(manifest),
         "catalog/__init__.py": (ROOT / "__init__.py").read_text(encoding="utf-8"),
         "desktop/plugin.js": managed,
         "catalog/desktop/plugin.js": managed,
